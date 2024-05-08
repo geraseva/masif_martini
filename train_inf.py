@@ -54,20 +54,15 @@ if __name__ == "__main__":
         batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2"]
 
         transformations = (
-            Compose([CenterPairAtoms(as_single=args['search']), 
-                     RandomRotationPairAtoms(as_single=args['search'])])
+            Compose([CenterPairAtoms(as_single=True), 
+                     RandomRotationPairAtoms(as_single=True)])
             if args['random_rotation']
             else Compose([])
         )
 
-        pre_transformations=[SurfacePrecompute(net.preprocess_surface, args['single_protein'])]
-        if args['search']:
-            pre_transformations.append(GenerateMatchingLabels(args['threshold']))
-        else:
-            pre_transformations.append(LabelsFromAtoms(single_protein=args['single_protein'],
-                                               threshold=args['threshold']))
-        if args['single_protein']:
-            pre_transformations.append(RemoveSecondProtein())
+        pre_transformations=[SurfacePrecompute(net.preprocess_surface, False)]
+        pre_transformations.append(GenerateMatchingLabels(args['threshold']))
+    
         pre_transformations=Compose(pre_transformations)
 
         print('# Loading testing set')   

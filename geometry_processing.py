@@ -16,54 +16,52 @@ from helper import diagonal_ranges
 # On-the-fly generation of the surfaces ========================================
 
 
-def subsample(x, batch=None, scale=1.0):
-    """Subsamples the point cloud using a grid (cubic) clustering scheme.
-
-    The function returns one average sample per cell, as described in Fig. 3.e)
-    of the paper.
-
-    Args:
-        x (Tensor): (N,3) point cloud.
-        batch (integer Tensor, optional): (N,) batch vector, as in PyTorch_geometric.
-            Defaults to None.
-        scale (float, optional): side length of the cubic grid cells. Defaults to 1 (Angstrom).
-
-    Returns:
-        (M,3): sub-sampled point cloud, with M <= N.
-    """
+def subsample(x, normals=None, batch=None, scale=1.0):
 
     if batch is None:  # Single protein case:
-        if True:  # Use a fast scatter_add_ implementation
-            labels = grid_cluster(x, scale).long()
-            C = labels.max() + 1
+        labels = grid_cluster(x, scale).long()
+        C = labels.max() + 1
 
-            # We append a "1" to the input vectors, in order to
-            # compute both the numerator and denominator of the "average"
-            #  fraction in one pass through the data.
-            x_1 = torch.cat((x, torch.ones_like(x[:, :1])), dim=1)
-            D = x_1.shape[1]
-            points = torch.zeros_like(x_1[:C])
-            points.scatter_add_(0, labels[:, None].repeat(1, D), x_1)
-            return (points[:, :-1] / points[:, -1:]).contiguous()
-
-        else:  # Older implementation;
-            points = scatter(points * weights[:, None], labels, dim=0)
-            weights = scatter(weights, labels, dim=0)
-            points = points / weights[:, None]
+        # We append a "1" to the input vectors, in order to
+        # compute both the numerator and denominator of the "average"
+        #  fraction in one pass through the data.
+        x_1 = torch.cat((x, torch.ones_like(x[:, :1])), dim=1)
+        D = x_1.shape[1]
+        points = torch.zeros_like(x_1[:C])
+        points.scatter_add_(0, labels[:, None].repeat(1, D), x_1)
+        points=(points[:, :-1] / points[:, -1:])
+        if normals is None:
+            return points.contiguous(), None, None
+        else:
+            n_1 = normals
+            D = n_1.shape[1]
+            norm = torch.zeros_like(n_1[:C])
+            norm.scatter_add_(0, labels[:, None].repeat(1, D), n_1)
+            norm /= (norm**2).sum(1, keepdim=True).sqrt()
+            return points.contiguous(), normals.contiguous(), None
 
     else:  # We process proteins using a for loop.
         # This is probably sub-optimal, but I don't really know
         # how to do more elegantly (this type of computation is
         # not super well supported by PyTorch).
-        batch_size = torch.max(batch).item() + 1  # Typically, =32
-        points, batches = [], []
-        for b in range(batch_size):
-            p = subsample(x[batch == b], scale=scale)
-            points.append(p)
-            batches.append(b * torch.ones_like(batch[: len(p)]))
+        batch_size = torch.max(batch).item() + 1 
+        if normals is None:
+            points, batches = [], []
+            for b in range(batch_size):
+                p = subsample(x[batch == b], scale=scale)
+                points.append(p)
+                batches.append(b * torch.ones_like(batch[: len(p)]))
 
-    return torch.cat(points, dim=0), torch.cat(batches, dim=0)
+            return torch.cat(points, dim=0), None, torch.cat(batches, dim=0)
+        else:
+            points, batches, normals = [], [], []
+            for b in range(batch_size):
+                p, n = subsample(x[batch == b], normals=normals[batch == b], scale=scale)
+                points.append(p)
+                normals.append(n)
+                batches.append(b * torch.ones_like(batch[: len(p)]))
 
+            return torch.cat(points, dim=0), torch.cat(normals, dim=0), torch.cat(batches, dim=0)
 
 def soft_distances(x, y, batch_x, batch_y, smoothness=0.01, atom_rad=None):
     """Computes a soft distance function to the atom centers of a protein.
@@ -89,10 +87,11 @@ def soft_distances(x, y, batch_x, batch_y, smoothness=0.01, atom_rad=None):
     D_ij = ((x_i - y_j) ** 2).sum(-1)  # (N, M, 1) squared distances
 
     # Use a block-diagonal sparsity mask to support heterogeneous batch processing:
-    D_ij.ranges = diagonal_ranges(batch_x, batch_y)
+    if batch_x!=None or batch_y!=None:
+        D_ij.ranges = diagonal_ranges(batch_x, batch_y)
 
     if atom_rad is not None:
-        smoothness = smoothness * atom_rad / 110
+        smoothness = smoothness * atom_rad / 1.10
         smoothness_i = LazyTensor(smoothness[:, None, None])
 
         # Compute an estimation of the mean smoothness in a neighborhood
@@ -166,7 +165,10 @@ def atoms_to_points_normals(
 
     # Batch vectors:
     batch_atoms = batch
-    batch_z = batch[:, None].repeat(1, B).view(N * B)
+    if batch_atoms!=None:
+        batch_z = batch[:, None].repeat(1, B).view(N * B)
+    else:
+        batch_z=None
 
     # b) Draw N*B points at random in the neighborhood of our atoms
     z = atoms[:, None, :] + 10 * T * torch.randn(N, B, D).type_as(atoms)
@@ -223,10 +225,11 @@ def atoms_to_points_normals(
         mask = mask & (dists > 1.5 * T)
 
         z = z[mask].contiguous().detach()
-        batch_z = batch_z[mask].contiguous().detach()
+        if batch_z!=None:
+            batch_z = batch_z[mask].contiguous().detach()
 
         # e) Subsample the point cloud:
-        points, batch_points = subsample(z, batch_z, scale=resolution)
+        points, _, batch_points = subsample(z, batch=batch_z, scale=resolution)
 
         # f) Compute the normals on this smaller point cloud:
         p = points.detach()
@@ -243,126 +246,11 @@ def atoms_to_points_normals(
         g = torch.autograd.grad(Loss, p)[0]
         normals = F.normalize(g, p=2, dim=-1)  # (N, 3)
     points = points - 0.5 * normals
-    return points.detach(), normals.detach(), batch_points.detach()
 
+    if batch_points!=None:
+        batch_points=batch_points.detach()
 
-# Surface mesh -> Normals ======================================================
-
-
-def mesh_normals_areas(vertices, triangles=None, scale=[1.0], batch=None, normals=None):
-    """Returns a smooth field of normals, possibly at different scales.
-
-    points, triangles or normals, scale(s)  ->      normals
-    (N, 3),    (3, T) or (N,3),      (S,)   ->  (N, 3) or (N, S, 3)
-
-    Simply put - if `triangles` are provided:
-      1. Normals are first computed for every triangle using simple 3D geometry
-         and are weighted according to surface area.
-      2. The normal at any given vertex is then computed as the weighted average
-         of the normals of all triangles in a neighborhood specified
-         by Gaussian windows whose radii are given in the list of "scales".
-
-    If `normals` are provided instead, we simply smooth the discrete vector
-    field using Gaussian windows whose radii are given in the list of "scales".
-
-    If more than one scale is provided, normal fields are computed in parallel
-    and returned in a single 3D tensor.
-
-    Args:
-        vertices (Tensor): (N,3) coordinates of mesh vertices or 3D points.
-        triangles (integer Tensor, optional): (3,T) mesh connectivity. Defaults to None.
-        scale (list of floats, optional): (S,) radii of the Gaussian smoothing windows. Defaults to [1.].
-        batch (integer Tensor, optional): batch vector, as in PyTorch_geometric. Defaults to None.
-        normals (Tensor, optional): (N,3) raw normals vectors on the vertices. Defaults to None.
-
-    Returns:
-        (Tensor): (N,3) or (N,S,3) point normals.
-        (Tensor): (N,) point areas, if triangles were provided.
-    """
-
-    # Single- or Multi-scale mode:
-    if hasattr(scale, "__len__"):
-        scales, single_scale = scale, False
-    else:
-        scales, single_scale = [scale], True
-    scales = torch.Tensor(scales).type_as(vertices)  # (S,)
-
-    # Compute the "raw" field of normals:
-    if triangles is not None:
-        # Vertices of all triangles in the mesh:
-        A = vertices[triangles[0, :]]  # (N, 3)
-        B = vertices[triangles[1, :]]  # (N, 3)
-        C = vertices[triangles[2, :]]  # (N, 3)
-
-        # Triangle centers and normals (length = surface area):
-        centers = (A + B + C) / 3  # (N, 3)
-        V = (B - A).cross(C - A)  # (N, 3)
-
-        # Vertice areas:
-        S = (V ** 2).sum(-1).sqrt() / 6  # (N,) 1/3 of a triangle area
-        areas = torch.zeros(len(vertices)).type_as(vertices)  # (N,)
-        areas.scatter_add_(0, triangles[0, :], S)  # Aggregate from "A's"
-        areas.scatter_add_(0, triangles[1, :], S)  # Aggregate from "B's"
-        areas.scatter_add_(0, triangles[2, :], S)  # Aggregate from "C's"
-
-    else:  # Use "normals" instead
-        areas = None
-        V = normals
-        centers = vertices
-
-    # Normal of a vertex = average of all normals in a ball of size "scale":
-    x_i = LazyTensor(vertices[:, None, :])  # (N, 1, 3)
-    y_j = LazyTensor(centers[None, :, :])  # (1, M, 3)
-    v_j = LazyTensor(V[None, :, :])  # (1, M, 3)
-    s = LazyTensor(scales[None, None, :])  # (1, 1, S)
-
-    D_ij = ((x_i - y_j) ** 2).sum(-1)  #  (N, M, 1)
-    K_ij = (-D_ij / (2 * s ** 2)).exp()  # (N, M, S)
-
-    # Support for heterogeneous batch processing:
-    if batch is not None:
-        batch_vertices = batch
-        batch_centers = batch[triangles[0, :]] if triangles is not None else batch
-        K_ij.ranges = diagonal_ranges(batch_vertices, batch_centers)
-
-    if single_scale:
-        U = (K_ij * v_j).sum(dim=1)  # (N, 3)
-    else:
-        U = (K_ij.tensorprod(v_j)).sum(dim=1)  # (N, S*3)
-        U = U.view(-1, len(scales), 3)  # (N, S, 3)
-
-    normals = F.normalize(U, p=2, dim=-1)  # (N, 3) or (N, S, 3)
-
-    return normals, areas
-
-
-# Compute tangent planes and curvatures ========================================
-
-
-def tangent_vectors(normals):
-    """Returns a pair of vector fields u and v to complete the orthonormal basis [n,u,v].
-
-          normals        ->             uv
-    (N, 3) or (N, S, 3)  ->  (N, 2, 3) or (N, S, 2, 3)
-
-    This routine assumes that the 3D "normal" vectors are normalized.
-    It is based on the 2017 paper from Pixar, "Building an orthonormal basis, revisited".
-
-    Args:
-        normals (Tensor): (N,3) or (N,S,3) normals `n_i`, i.e. unit-norm 3D vectors.
-
-    Returns:
-        (Tensor): (N,2,3) or (N,S,2,3) unit vectors `u_i` and `v_i` to complete
-            the tangent coordinate systems `[n_i,u_i,v_i].
-    """
-    x, y, z = normals[..., 0], normals[..., 1], normals[..., 2]
-    s = (2 * (z >= 0)) - 1.0  # = z.sign(), but =1. if z=0.
-    a = -1 / (s + z)
-    b = x * y * a
-    uv = torch.stack((1 + s * x * x * a, s * b, -s * x, b, s + y * y * a, -y), dim=-1)
-    uv = uv.view(uv.shape[:-1] + (2, 3))
-
-    return uv
+    return points.detach(), normals.detach(), batch_points
 
 
 def curvatures(

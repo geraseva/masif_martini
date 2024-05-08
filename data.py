@@ -193,6 +193,7 @@ class PairData:
     def __init__(self, mapping=None):
 
         self._storage={}
+        self.idx=''
         if mapping!=None:
             self.from_dict(mapping)
 
@@ -205,6 +206,12 @@ class PairData:
     def __delitem__(self, key: str):
         if key in self._storage:
             del self._storage[key]
+
+    def get(self, key):
+        try:
+            return self._storage[key]
+        except KeyError:
+            return None
 
     @property
     def keys(self) -> List[str]:
@@ -298,11 +305,12 @@ class NpiDataset(Dataset):
             self.process()
         else:
             self.data = torch.load(self.processed_file_names[0], map_location='cuda')
-            self.list = np.load(self.processed_file_names[1])
+            #self.list = np.load(self.processed_file_names[1])
+            self.list = [x.idx for x in self.data]
 
         if store:
             torch.save(self.data, self.processed_file_names[0])
-            np.save(self.processed_file_names[1], self.list)
+            #np.save(self.processed_file_names[1], self.list)
     
     @property
     def raw_file_names(self):
@@ -324,6 +332,7 @@ class NpiDataset(Dataset):
 
         protein_pair=load_protein_pair(f'{self.raw_dir}/{pspl[0]}.pdb', 
                                        self.encoders, pspl[1], pspl[2] if len(pspl)==3 else None)
+        protein_pair.idx=idx
         if protein_pair is None:
             print(f'##! Skipping non-existing files for {idx}' )
         
@@ -395,7 +404,7 @@ class SurfacePrecompute(object):
         return "{}()".format(self.__class__.__name__)
 
 
-def get_threshold_labels(queries,batch_queries,source,batch_source,labels, threshold):
+def get_threshold_labels(queries,batch_queries,source,batch_source,labels, threshold, source_rad=0):
 
     x_i = LazyTensor(queries[:, None, :])  # (N, 1, D)
     y_j = LazyTensor(source[None, :, :])  # (1, M, D)
@@ -404,8 +413,8 @@ def get_threshold_labels(queries,batch_queries,source,batch_source,labels, thres
     D_ij.ranges = diagonal_ranges(batch_queries, batch_source)
     nn_i = D_ij.argmin(dim=1).view(-1).detach()   # (N,)
     nn_dist_i = (
-        D_ij.min(dim=1).view(-1) < threshold**2
-    )  
+            D_ij.min(dim=1).view(-1) < (source_rad+threshold)**2
+        )   
     
     query_labels = torch.take(labels,nn_i)
     query_labels=query_labels * nn_dist_i
@@ -431,7 +440,8 @@ class LabelsFromAtoms(object):
                 source = protein_pair['atom_xyz_p2'],
                 batch_source = None,
                 labels = protein_pair['atom_res_p2'],
-                threshold=self.threshold)
+                threshold=self.threshold, 
+                source_rad=protein_pair['atom_rad_p2'])
         protein_pair['labels_p1'] = query_labels.detach()
 
         if not self.single:        
@@ -444,7 +454,8 @@ class LabelsFromAtoms(object):
                     source = protein_pair['atom_xyz_p1'],
                     batch_source = None,
                     labels = protein_pair['atom_res_p1'],
-                    threshold=self.threshold)
+                    threshold=self.threshold, 
+                    source_rad=protein_pair['atom_rad_p1'])
             protein_pair['labels_p2'] = query_labels.detach()
 
         return protein_pair
@@ -465,10 +476,14 @@ class GenerateMatchingLabels(object):
         xyz1_i = protein_pair['xyz_p1']
         xyz2_j = protein_pair['xyz_p2']
 
+        batch_i = protein_pair.get('batch_xyz_p1')
+        batch_j = protein_pair.get('batch_xyz_p2')
+
         xyz1_i = LazyTensor(xyz1_i[:, None, :].contiguous())
         xyz2_j = LazyTensor(xyz2_j[None, :, :].contiguous())
 
         xyz_dists = ((xyz1_i - xyz2_j) ** 2).sum(-1)
+        xyz_dists.ranges = diagonal_ranges(batch_i, batch_j)
         xyz_dists = (self.threshold**2 - xyz_dists).step()
 
         protein_pair['labels_p1'] = (xyz_dists.sum(1) > 1.0).float().view(-1).detach()

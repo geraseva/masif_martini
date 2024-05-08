@@ -8,8 +8,6 @@ from pykeops.torch import LazyTensor
 
 from geometry_processing import (
     curvatures,
-    mesh_normals_areas,
-    tangent_vectors,
     atoms_to_points_normals,
 )
 from helper import *
@@ -600,13 +598,10 @@ class dMaSIF(nn.Module):
 
     def preprocess_surface(self, P):
         surf_time = time.time()
-
-        if 'batch_atom_xyz' not in P.keys():
-            P["batch_atom_xyz"]=torch.zeros(P["atom_xyz"].shape[0],device=P["atom_xyz"].device, dtype=int)
             
         P["xyz"], P["normals"], P["batch_xyz"] = atoms_to_points_normals(
             P["atom_xyz"],
-            P["batch_atom_xyz"],
+            P.get("batch_atom_xyz"),
             atom_rad=P["atom_rad"],
             resolution=self.args['resolution'],
             sup_sampling=self.args['sup_sampling'],

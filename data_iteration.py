@@ -247,7 +247,7 @@ def iterate(
             optimizer.zero_grad()
 
         P1_batch = protein_pair.to_dict(chain_idx=1)
-        P2_batch = None if args['single_protein'] else  protein_pair.to_dict(chain_idx=2)
+        P2_batch = None if args['single_protein'] else protein_pair.to_dict(chain_idx=2)
  
         outputs = net(P1_batch, P2_batch)
         info_dict=dict(
@@ -439,29 +439,19 @@ def load_train_objs(args, net_args):
 
 
     transformations = (
-        Compose([CenterPairAtoms(as_single=args['search']), 
-                 RandomRotationPairAtoms(as_single=args['search'])])
+        Compose([CenterPairAtoms(as_single=True), 
+                 RandomRotationPairAtoms(as_single=True)])
         if args['random_rotation']
         else Compose([])
     )
 
-    pre_transformations=[SurfacePrecompute(net.preprocess_surface, args['single_protein'])]
-    if args['search']:
-        pre_transformations.append(GenerateMatchingLabels(args['threshold']))
-    else:
-        pre_transformations.append(LabelsFromAtoms(single_protein=args['single_protein'],
-                                                   threshold=args['threshold']))
-    if args['single_protein']:
-        pre_transformations.append(RemoveSecondProtein())
+    pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
+                         GenerateMatchingLabels(args['threshold'])]
+
     pre_transformations=Compose(pre_transformations)
 
     print('# Loading datasets')   
-    if args['site']:
-        prefix=f'site_{args["na"].lower()}_'
-    elif args['npi']:
-        prefix=f'npi_{args["na"].lower()}_'
-    elif args['search']:
-        prefix=f'search_{args["na"].lower()}_'
+    prefix=f'{args["na"].lower()}_'
     if args['no_h']:
         prefix+='no_h_'
         

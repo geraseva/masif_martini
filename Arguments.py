@@ -79,6 +79,7 @@ net_parser.add_argument(
     "--n_outputs",
     type=int,
     help="Number of output channels",
+    default=1
 )
 net_parser.add_argument(
     "--n_layers", type=int, default=3, help="Number of convolutional layers"
@@ -86,7 +87,9 @@ net_parser.add_argument(
 net_parser.add_argument(
     "--radius", type=float, default=9.0, help="Radius to use for the convolution"
 )
-net_parser.add_argument('--split', action='store_true', help="Whether to train two conv modules")
+net_parser.add_argument('--split', default=True, 
+                        type=lambda x: (str(x).lower() == 'true'),
+                        help="Whether to train two conv modules")
 net_parser.add_argument("--dropout", type=float, default=0.0,
     help="Amount of Dropout for the input features"
 )
@@ -101,15 +104,6 @@ required.add_argument(
     '-e',"--experiment_name", type=str, help="Name of experiment", required=True
 )
 
-task = required.add_mutually_exclusive_group(required=True)
-
-task.add_argument("--site", action='store_true', 
-    help="Predict interaction site")
-task.add_argument("--npi", action='store_true', 
-    help="Predict nucleotide binding")
-task.add_argument( "--search", action='store_true', 
-    help="Predict matching between two partners")
-
 required.add_argument(
     "--na",
     type=str,
@@ -120,14 +114,12 @@ required.add_argument(
 train_inf_parser.add_argument(
     "--loss",
     type=str,
-    default=None,
+    default='BCELoss',
     choices=["CELoss", "BCELoss", "FocalLoss"],
     help="Which loss function to use",
 )
 train_inf_parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
-train_inf_parser.add_argument( "--single_protein", help="Use single protein in a pair or both",
-                              type=lambda x: (str(x).lower() == 'true'))
 train_inf_parser.add_argument( "--random_rotation", type=lambda x: (str(x).lower() == 'true'),
     help="Move proteins to center and add random rotation", default=None)
 train_inf_parser.add_argument(
@@ -144,7 +136,8 @@ train_inf_parser.add_argument(
     "--batch_size", type=int, default=1, help="Batch size"
 )
 train_inf_parser.add_argument( "--threshold", type=float, 
-    default=None, help="Distance threshold for interaction")
+    default=1, help="Distance threshold for interaction")
+
 train_inf_parser.add_argument(
     "--no_h",
     action='store_true',
@@ -230,35 +223,13 @@ def parse_train():
     args, _ = main_parser.parse_known_args()
 
     if args.encoders=={}:
-        if args.npi:
-            if args.na=='DNA':
-                args.encoders['atom_resnames']=[{'name': 'atom_res',
-                                                 'encoder': {'DA':1, "DG": 2, "DC":3, "DT":4, '-':0}
-                                                 }]
-            elif args.na=='RNA':
-                args.encoders['atom_resnames']=[{'name': 'atom_res',
-                                                 'encoder': {'A':1, "G": 2, "C":3, "U":4, '-':0 }
-                                                 }]
-            elif args.na=='NA':
-                args.encoders['atom_resnames']=[{'name': 'atom_res',
-                                                 'encoder': {'DA':1, "DG": 2, "DC":3, "DT":4, 
-                                                 'A':1, "G": 2, "C":3, "U":4, '-':0 }
-                                                 }]
-        else:
-            args.encoders['atom_resnames']=[{'name': 'atom_res',
+        args.encoders['atom_resnames']=[{'name': 'atom_res',
                                                  'encoder': {'-':1 }
                                             }]
-        if args.search and args.na!='protein': 
-            args.encoders['atom_types']=[{'name': 'atom_types',
+        args.encoders['atom_types']=[{'name': 'atom_types',
                                                  'encoder': {"C": 0, "H": 1, "O": 2, "N": 3, "S": 4, "P": 5, '-': 4 }},
                                             {'name': 'atom_rad',
-                                                 'encoder': {'H': 110, 'C': 170, 'N': 155, 'O': 152, '-': 180}
-                                            }]
-        else:
-            args.encoders['atom_types']=[{'name': 'atom_types',
-                                                 'encoder': {"C": 0, "H": 1, "O": 2, "N": 3, '-': 4 }},
-                                            {'name': 'atom_rad',
-                                                 'encoder': {'H': 110, 'C': 170, 'N': 155, 'O': 152, '-': 180}
+                                                 'encoder': {'H': 1.10, 'C': 1.70, 'N': 1.55, 'O': 1.52, '-': 1.80}
                                             }]
         if args.no_h:
             for encoder in args.encoders['atom_types']:
@@ -270,53 +241,22 @@ def parse_train():
                         encoder['encoder'][key]-=1 
             args.encoders['atom_types'].append({'name': 'mask',
                                                    'encoder': {"H": 0, "-": 1}})
-    if args.threshold==None:
-        if args.search:
-            args.threshold=1 # distance between two surface points
-        else:
-            args.threshold=5 # distance between surface point and atom center
-    if args.single_protein==None:
-        if args.search:
-            args.single_protein=False
-        else:
-            args.single_protein=True
         if args.devices==None:
             if args.device==None:
                 args.device='cuda:0'
             args.devices=[args.device]
         elif args.device==None:
             args.device=args.devices[0]
-        if args.loss==None:  
-            if args.npi:
-                args.loss='FocalLoss'
-            else:
-                args.loss='BCELoss'  
             
     if args.mode=='train':
         net_args, _ = net_parser.parse_known_args()
         if args.random_rotation==None:
             args.random_rotation=True
-
         if net_args.atom_dims==None:
-            if args.search and args.na!='protein': 
-                net_args.atom_dims=6
-            else:
-                net_args.atom_dims=5
-            if args.no_h:
-                net_args.atom_dims-=1
-        if net_args.n_outputs==None:
-            if args.npi:
-                net_args.n_outputs=5
-            elif args.site:
-                net_args.n_outputs=1
-            elif args.search:
-                net_args.n_outputs=0
+            net_args.atom_dims=max(args.encoders['atom_types'][0]['encoder'].values())+1
+
         if net_args.encoders=={}:
             net_args.encoders=args.encoders
-        if args.search:
-            net_args.split=True
-        else:
-            net_args.split=False
         if net_args.distance==None:
             if args.no_h:
                 net_args.distance=1.25
