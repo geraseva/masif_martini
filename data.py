@@ -303,14 +303,14 @@ class NpiDataset(Dataset):
                 if not os.path.exists(protonated_file):
                     download_pdb(protonated_file.split('/')[-1].split('.')[0],protonated_file)
             self.process()
+            if store:
+                torch.save(self.data, self.processed_file_names[0])
+                #np.save(self.processed_file_names[1], self.list)
         else:
             self.data = torch.load(self.processed_file_names[0], map_location='cuda')
             #self.list = np.load(self.processed_file_names[1])
             self.list = [x.idx for x in self.data]
 
-        if store:
-            torch.save(self.data, self.processed_file_names[0])
-            #np.save(self.processed_file_names[1], self.list)
     
     @property
     def raw_file_names(self):
@@ -319,10 +319,7 @@ class NpiDataset(Dataset):
 
     @property
     def processed_file_names(self):
-        file_names = [
-            self.processed_dir+self.name+'.pt',
-            self.processed_dir+self.name+'_idx.npy'
-        ]
+        file_names = [self.processed_dir+self.name+'.pt']
 
         return file_names
     

@@ -2,7 +2,9 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
-from sklearn.metrics import roc_auc_score
+#from sklearn.metrics import roc_auc_score
+from torcheval.metrics.functional import binary_auroc
+
 from tqdm import tqdm
 import copy
 
@@ -19,75 +21,6 @@ from model import dMaSIF, Lion
 
 import gc
 from helper import *
-
-
-class FocalLoss(nn.Module):
-    r"""Criterion that computes Focal loss.
-    
-    References:
-        [1] https://arxiv.org/abs/1708.02002
-    """
-
-    def __init__(self, alpha: float, gamma: float = 2.0,
-                 reduction: str = 'none') -> None:
-        super(FocalLoss, self).__init__()
-        self.alpha: float = alpha
-        self.gamma: float = gamma
-        self.reduction: str = reduction
-        self.eps: float = 1e-6
-
-    def forward(
-            self,
-            input: torch.Tensor,
-            target: torch.Tensor) -> torch.Tensor:
-        if not torch.is_tensor(input):
-            raise TypeError("Input type is not a torch.Tensor. Got {}"
-                            .format(type(input)))
-        if not input.shape[0] == target.shape[0]:
-            raise ValueError("input and target shapes must be the same. Got: {}"
-                             .format(input.shape, input.shape))
-        if not input.device == target.device:
-            raise ValueError(
-                "input and target must be in the same device. Got: {}" .format(
-                    input.device, target.device))
-        if len(input.shape)==1 or input.shape[1]==1: 
-            # binary
-            input_soft = torch.sigmoid(input.squeeze())
-            input_soft=torch.stack((1. - input_soft, input_soft), dim=1) + self.eps
-
-        else:
-        # compute softmax over the classes axis
-            input_soft = F.softmax(input, dim=1) + self.eps
-
-        # create the labels one hot tensor
-        target_one_hot = F.one_hot(target.to(torch.int64), num_classes=input_soft.shape[1])
-
-        # compute the actual focal loss
-        weight = torch.pow(1. - input_soft, self.gamma)
-        focal = -self.alpha * weight * torch.log(input_soft)
-        loss_tmp = torch.sum(target_one_hot * focal, dim=1)
-
-        loss = -1
-        if self.reduction == 'none':
-            loss = loss_tmp
-        elif self.reduction == 'mean':
-            loss = torch.mean(loss_tmp)
-        elif self.reduction == 'sum':
-            loss = torch.sum(loss_tmp)
-        else:
-            raise NotImplementedError("Invalid reduction mode: {}"
-                                      .format(self.reduction))
-        return loss
-
-
-def focal_loss(
-        input: torch.Tensor,
-        target: torch.Tensor,
-        alpha: float = 0.25,
-        gamma: float = 2.0,
-        reduction: str = 'none') -> torch.Tensor:
-
-    return FocalLoss(alpha, gamma, reduction)(input, target)
 
 
 def save_protein_batch_single(protein_pair_id, P, save_path, pdb_idx):
@@ -124,50 +57,18 @@ def save_protein_batch_single(protein_pair_id, P, save_path, pdb_idx):
             )
 
 
+def compute_binary_loss(P1, P2, lf=F.binary_cross_entropy_with_logits):
 
-def compute_loss(args, P1, P2):
+    # binary
+    pos_preds = P1["preds"][P1["labels"] > 0]
+    neg_preds = P1["preds"][P1["labels"] == 0]
 
-    if args['search']:
-
-        pos_descs1 = P1["embedding_1"][P1["edge_labels"],:]
-        pos_descs2 = P2["embedding_2"][P2["edge_labels"],:]
-        pos_preds = torch.sum(pos_descs1*pos_descs2, axis=-1)
-
-        pos_descs1_2 = P1["embedding_2"][P1["edge_labels"],:]
-        pos_descs2_2 = P2["embedding_1"][P2["edge_labels"],:]
-        pos_preds2 = torch.sum(pos_descs1_2*pos_descs2_2, axis=-1)
-
-        pos_preds = torch.cat([pos_preds, pos_preds2], dim=0)
-
-        n_desc_sample = 100
-        
-        sample_desc1=P1["embedding_1"][P1["labels"] == 1]
-        sample_desc2 = torch.randperm(len(P2["embedding_2"]))[:n_desc_sample]
-        sample_desc2 = P2["embedding_2"][sample_desc2]
-        neg_preds = torch.matmul(sample_desc1, sample_desc2.T).view(-1)
-
-        sample_desc2_1=P1["embedding_2"][P1["labels"] == 1]
-        sample_desc1_2 = torch.randperm(len(P1["embedding_2"]))[:n_desc_sample]
-        sample_desc1_2 = P1["embedding_2"][sample_desc1_2]
-        neg_preds_2 = torch.matmul(sample_desc2_1, sample_desc1_2.T).view(-1)
-
-        neg_preds = torch.cat([neg_preds, neg_preds_2], dim=0)
-
-        pos_labels = torch.ones_like(pos_preds)
-        neg_labels = torch.zeros_like(neg_preds)
-
-    else:
-        pos_preds = P1["preds"][P1["labels"] > 0]
-        pos_labels = P1["labels"][P1["labels"] > 0]
-        neg_preds = P1["preds"][P1["labels"] == 0]
-        neg_labels = P1["labels"][P1["labels"] == 0]
+    pos_labels = torch.ones_like(pos_preds)
+    neg_labels = torch.zeros_like(neg_preds)
 
     n_points_sample = len(pos_labels)
     pos_indices = torch.randperm(len(pos_labels))[:n_points_sample]
-    if args['npi']:
-        neg_indices = torch.randperm(len(neg_labels))[:n_points_sample//4]
-    else:
-        neg_indices = torch.randperm(len(neg_labels))[:n_points_sample]
+    neg_indices = torch.randperm(len(neg_labels))[:n_points_sample]
 
     pos_preds = pos_preds[pos_indices]
     pos_labels = pos_labels[pos_indices]
@@ -177,13 +78,53 @@ def compute_loss(args, P1, P2):
     preds_concat = torch.cat([pos_preds, neg_preds])
     labels_concat = torch.cat([pos_labels, neg_labels])
     
-    if args['loss']=='CELoss':
-        loss = F.cross_entropy(preds_concat, labels_concat, reduction='mean')
-    elif args['loss']=='BCELoss':
-        loss = F.binary_cross_entropy_with_logits(preds_concat.squeeze(), labels_concat.float(),
-                                                  reduction='mean')
-    elif args['loss']=='FocalLoss':
-        loss = focal_loss(preds_concat, labels_concat, reduction='mean')
+    loss = lf(preds_concat, labels_concat, reduction='mean')
+    
+    return loss, preds_concat, labels_concat
+
+def compute_complementary_loss(P1, P2, lf=F.binary_cross_entropy_with_logits):
+
+    # complementary
+    pos_descs1 = P1["embedding_1"][P1["edge_labels"],:]
+    pos_descs2 = P2["embedding_2"][P2["edge_labels"],:]
+    pos_preds = torch.sum(pos_descs1*pos_descs2, axis=-1)
+
+    pos_descs1_2 = P1["embedding_2"][P1["edge_labels"],:]
+    pos_descs2_2 = P2["embedding_1"][P2["edge_labels"],:]
+    pos_preds2 = torch.sum(pos_descs1_2*pos_descs2_2, axis=-1)
+
+    pos_preds = torch.cat([pos_preds, pos_preds2], dim=0)
+
+    n_desc_sample = 100
+        
+    sample_desc1=P1["embedding_1"][P1["labels"] == 1]
+    sample_desc2 = torch.randperm(len(P2["embedding_2"]))[:n_desc_sample]
+    sample_desc2 = P2["embedding_2"][sample_desc2]
+    neg_preds = torch.matmul(sample_desc1, sample_desc2.T).view(-1)
+
+    sample_desc2_1=P1["embedding_2"][P1["labels"] == 1]
+    sample_desc1_2 = torch.randperm(len(P1["embedding_2"]))[:n_desc_sample]
+    sample_desc1_2 = P1["embedding_2"][sample_desc1_2]
+    neg_preds_2 = torch.matmul(sample_desc2_1, sample_desc1_2.T).view(-1)
+
+    neg_preds = torch.cat([neg_preds, neg_preds_2], dim=0)
+
+    pos_labels = torch.ones_like(pos_preds)
+    neg_labels = torch.zeros_like(neg_preds)
+
+    n_points_sample = len(pos_labels)
+    pos_indices = torch.randperm(len(pos_labels))[:n_points_sample]
+    neg_indices = torch.randperm(len(neg_labels))[:n_points_sample]
+
+    pos_preds = pos_preds[pos_indices]
+    pos_labels = pos_labels[pos_indices]
+    neg_preds = neg_preds[neg_indices]
+    neg_labels = neg_labels[neg_indices]
+
+    preds_concat = torch.cat([pos_preds, neg_preds])
+    labels_concat = torch.cat([pos_labels, neg_labels])
+    
+    loss = lf(preds_concat, labels_concat, reduction='mean')
 
 
     return loss, preds_concat, labels_concat
@@ -219,8 +160,7 @@ def iterate(
     optimizer,
     args,
     test=False,
-    save_path=None,
-    pdb_ids=None,
+    save_path=None
 ):
 
     if test:
@@ -232,23 +172,16 @@ def iterate(
 
     # Statistics and fancy graphs to summarize the epoch:
     info = []
-    total_processed_pairs = 0
     # Loop over one epoch:
     for protein_pair in tqdm(dataset):  
-
-        if pdb_ids is not None:
-            batch_ids = pdb_ids[
-                total_processed_pairs : total_processed_pairs + args['batch_size']
-            ]
-            total_processed_pairs += args['batch_size']
         #protein_pair.to(args['device'])
         
         if not test:
             optimizer.zero_grad()
 
         P1_batch = protein_pair.to_dict(chain_idx=1)
-        P2_batch = None if args['single_protein'] else protein_pair.to_dict(chain_idx=2)
- 
+        P2_batch = protein_pair.to_dict(chain_idx=2)
+
         outputs = net(P1_batch, P2_batch)
         info_dict=dict(
                        {
@@ -264,47 +197,53 @@ def iterate(
         P2_batch = outputs["P2"]
 
         if P1_batch["labels"] is not None:
-            loss, sampled_preds, sampled_labels = compute_loss(args, P1_batch, P2_batch)
-            info_dict["Loss"]=loss.detach().item()
+            bloss, bsampled_preds, bsampled_labels=compute_binary_loss(P1_batch, P2_batch)
+            closs, csampled_preds, csampled_labels=compute_complementary_loss(P1_batch, P2_batch)
+            loss=bloss+closs
+            info_dict["binary_loss"]=bloss.detach().item()
+            info_dict["complementary_loss"]=closs.detach().item()
+            info_dict["loss"]=loss.detach().item()
+
         else:
-            sampled_preds = None
-            sampled_labels = None
+            bsampled_preds = None
+            bsampled_labels = None
+            csampled_preds = None
+            csampled_labels = None
 
         # Compute the gradient, update the model weights:
         if not test:
             loss.backward()
             optimizer.step()   
 
-        if sampled_labels is not None and sampled_labels.shape[0]>0:
-            if len(sampled_preds.shape)>1 and sampled_preds.shape[1]>1:
-                a=np.rint(numpy(sampled_labels))
-                b=numpy(F.softmax(sampled_preds, dim=1))
-                roc_auc = roc_auc_score(
-                    a,b, multi_class='ovo', 
-                    labels=list(range(sampled_preds.shape[1]))
-                )
-            else:
-                a=np.rint(numpy(sampled_labels.view(-1)))
-                b=numpy(sampled_preds.view(-1))
-                roc_auc = roc_auc_score(a, b)
-            info_dict["ROC-AUC"]=roc_auc
-           
+        if bsampled_labels is not None and bsampled_labels.shape[0]>0:
+            info_dict["binary_AUROC"]=binary_auroc(bsampled_preds.view(-1),bsampled_labels.view(-1)).item()
+        if csampled_labels is not None and csampled_labels.shape[0]>0:
+            info_dict["complementary_AUROC"]=binary_auroc(csampled_preds.view(-1),csampled_labels.view(-1)).item()
+
         info.append(info_dict)
 
-        if pdb_ids is not None:
-            info[-1]['PDB IDs']=batch_ids
-            if save_path is not None:
+        if save_path is not None:
+            batch_ids=protein_pair.idx
+            if isinstance(batch_ids, str):
+                info[-1]['PDB IDs']=[batch_ids]
+                save_protein_batch_single(
+                        batch_ids, P1_batch, save_path, pdb_idx=1
+                    )
+                save_protein_batch_single(
+                        pdb_id, P2_batch, save_path, pdb_idx=2
+                    )
+            else:
+                info[-1]['PDB IDs']=batch_ids
                 for i, pdb_id in enumerate(batch_ids):
                     P1 = extract_single(P1_batch, i)
-                    P2 = None if args['single_protein'] else extract_single(P2_batch, i)
+                    P2 = extract_single(P2_batch, i)
 
                     save_protein_batch_single(
                         pdb_id, P1, save_path, pdb_idx=1
                     )
-                    if not args['single_protein']:
-                        save_protein_batch_single(
-                            pdb_id, P2, save_path, pdb_idx=2
-                        )
+                    save_protein_batch_single(
+                        pdb_id, P2, save_path, pdb_idx=2
+                    )
 
 
     # Turn a list of dicts into a dict of lists:
@@ -380,7 +319,7 @@ class Trainer:
             )
     
             for key, val in info.items():
-                if key in ["Loss", "ROC-AUC"]:
+                if key not in ['PDB IDs']:
                     print(key ,suffix , epoch, np.nanmean(val))
     
             if dataset_type == "Validation":  # Store validation loss for saving the model
@@ -515,23 +454,22 @@ class CollateData:
     def __call__(self, data):
 
         result_dict = {}
+        pdb_ids=[]
         for d in data:
+            pdb_ids.append(d.idx)
+            # add batch
+            for key in self.follow_batch:
+                bkey=f'batch_{key}'
+                d[bkey]=torch.zeros((d[key].shape[0],), dtype=int).to(d[key].device) 
+            # increment
             for key in d.keys:   
                 if key not in result_dict:
                     result_dict[key] = d[key]
                 else:
                     result_dict[key] = torch.cat((result_dict[key], d[key]+d.__inc__(key, result_dict[key])), dim=0)
-                if key in self.follow_batch:
-                    bkey=f'batch_{key}'  
-                    if bkey in d.keys:
-                        continue
-                    batch=torch.zeros((d[key].shape[0],), dtype=int).to(d[key].device) 
-                    if bkey not in result_dict:
-                        result_dict[bkey] = batch
-                    else:
-                        result_dict[bkey] = torch.cat((result_dict[bkey], batch+d.__inc__(bkey, result_dict[bkey])), dim=0)
                         
         result_dict=PairData(mapping=result_dict)
+        result_dict.idx=pdb_ids
         result_dict.contiguous()
         return result_dict
 

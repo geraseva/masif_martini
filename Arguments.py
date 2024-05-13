@@ -111,13 +111,6 @@ required.add_argument(
     help="Which dataset to use for training",
     required=True
 )
-train_inf_parser.add_argument(
-    "--loss",
-    type=str,
-    default='BCELoss',
-    choices=["CELoss", "BCELoss", "FocalLoss"],
-    help="Which loss function to use",
-)
 train_inf_parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
 train_inf_parser.add_argument( "--random_rotation", type=lambda x: (str(x).lower() == 'true'),

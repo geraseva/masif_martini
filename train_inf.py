@@ -60,10 +60,8 @@ if __name__ == "__main__":
             else Compose([])
         )
 
-        pre_transformations=[SurfacePrecompute(net.preprocess_surface, False)]
-        pre_transformations.append(GenerateMatchingLabels(args['threshold']))
-    
-        pre_transformations=Compose(pre_transformations)
+        pre_transformations=Compose([SurfacePrecompute(net.preprocess_surface, False),
+                                     GenerateMatchingLabels(args['threshold'])])
 
         print('# Loading testing set')   
         if args['single_pdb'] != "":
@@ -84,6 +82,7 @@ if __name__ == "__main__":
             if protein_pair==None:
                 print(f'##! Skipping non-existing files for {pdb}' )
             else:
+                protein_pair.idx=pdb
                 test_dataset.append(protein_pair)
                 test_pdb_ids.append(pdb)
         
@@ -108,20 +107,16 @@ if __name__ == "__main__":
                 None,
                 args,
                 test=True,
-                save_path=args['out_dir'],
-                pdb_ids=test_pdb_ids,
+                save_path=args['out_dir']
         )
 
-        info['indexes']=test_pdb_ids
         json.dump(info, open(args['out_dir']+'/meta.json', 'w'), indent=4)
 
         for i, pdbs in enumerate(info['PDB IDs']):
             print('; '.join(pdbs))
-            for key in ['Loss','ROC-AUC']:
-                print(f"    {key} {info[key][i]}")
-
-        print('## Mean Loss:',np.nanmean(info["Loss"]),'std Loss:',np.nanstd(info["Loss"]))
-        print('## Mean ROC-AUC:',np.nanmean(info["ROC-AUC"]),'std ROC-AUC:',np.nanstd(info["ROC-AUC"]))
+            for key in info:
+                if key not in ['PDB IDs']:
+                    print(f"    {key} {info[key][i]}")
 
         print('## Data saved to',save_predictions_path)
 
