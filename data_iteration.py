@@ -323,7 +323,7 @@ class Trainer:
                     print(key ,suffix , epoch, np.nanmean(val))
     
             if dataset_type == "Validation":  # Store validation loss for saving the model
-                val_loss = np.nanmean(info["Loss"])
+                val_loss = np.nanmean(info["loss"])
         
                 if val_loss < self.best_loss and self.gpu_id==self.args['devices'][0]:
                     print("## Validation loss {}, saving model".format(val_loss))
