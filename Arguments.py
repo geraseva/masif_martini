@@ -318,7 +318,7 @@ def parse_train():
             if args.no_h:
                 net_args.knn=10
             elif args.martini:
-                net_args.knn=6
+                net_args.knn=3
             else:
                 net_args.knn=16
         if net_args.smoothness==None:
