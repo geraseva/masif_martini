@@ -171,7 +171,10 @@ def atoms_to_points_normals(
         batch_z=None
 
     # b) Draw N*B points at random in the neighborhood of our atoms
-    z = atoms[:, None, :] + 10 * T * torch.randn(N, B, D).type_as(atoms)
+    nb = torch.randn(N, B, D).type_as(atoms)
+    nb /= (nb**2).sum(-1, keepdim=True).sqrt()
+    z = atoms[:, None, :] + nb * atom_rad[:,None,None]
+    #z = atoms[:, None, :] + 10 * T * torch.randn(N, B, D).type_as(atoms)
     z = z.view(-1, D)  # (N*B, D)
 
 

@@ -1,10 +1,11 @@
 Implementation of [dMaSIF](https://github.com/FreyrS/dMaSIF) to predict NA-protein interactions.
 
 Required libraries:
-- reduce 
 - biopython
 - pytorch
 - pykeops
+- torcheval
+- reduce (optional)
 - pymol (optional)
 
 Commands used for training are in the `benchmark.sh` file.

@@ -177,7 +177,6 @@ class AtomNet_V(nn.Module):
         )
 
 
-
     def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch):
 
         atomtypes=atomtypes[:,:self.atom_dims]
@@ -445,11 +444,16 @@ def combine_pair(P1, P2):
 
 
 def split_pair(P1P2):
+
     p1_indices = (P1P2["batch_xyz"] % 2) == 0
     p2_indices = (P1P2["batch_xyz"] % 2) == 1
 
     p1_atom_indices = (P1P2["batch_atom_xyz"] % 2) == 0
     p2_atom_indices = (P1P2["batch_atom_xyz"] % 2) == 1
+
+    if 'batch_sequence' in P1P2:
+        p1_sequence_indices = (P1P2["batch_sequence"] % 2) == 0
+        p2_sequence_indices = (P1P2["batch_sequence"] % 2) == 1
 
     P1 = {}
     P2 = {}
@@ -463,15 +467,18 @@ def split_pair(P1P2):
         elif "atom" in key:
             P1[key] = v1v2[p1_atom_indices]
             P2[key] = v1v2[p2_atom_indices]
+        elif ("sequence" in key) or ('bb' in key):
+            P1[key] = v1v2[p1_sequence_indices]
+            P2[key] = v1v2[p2_sequence_indices]
         elif ("face" in key) or ('edge' in key):
             P1[key] = v1v2[v1v2<sum(p1_indices)]
             P2[key] = v1v2[v1v2>=sum(p1_indices)]-sum(p1_indices)
         else:
             P1[key] = v1v2[p1_indices]
             P2[key] = v1v2[p2_indices]
-            if 'batch' in key:
-                P1[key] = P1[key] // 2
-                P2[key] = P2[key] // 2
+        if 'batch' in key:
+            P1[key] = P1[key] // 2
+            P2[key] = P2[key] // 2
 
     return P1, P2
 
@@ -605,6 +612,7 @@ class dMaSIF(nn.Module):
             atom_rad=P["atom_rad"],
             resolution=self.args['resolution'],
             sup_sampling=self.args['sup_sampling'],
+            smoothness=self.args['smoothness'],
             distance=self.args['distance']
         )
 

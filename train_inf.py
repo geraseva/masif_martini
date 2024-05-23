@@ -37,6 +37,7 @@ if __name__ == "__main__":
         from data import *
         from model import dMaSIF
         from data_iteration import iterate, CollateData, Compose
+        from martinize import ReshapeBB, BB2Martini
 
         model_path = "models/" + args['experiment_name']
         checkpoint=torch.load(model_path, map_location=args['device'])
@@ -51,7 +52,7 @@ if __name__ == "__main__":
         print('# Model loaded')
         print('## Model arguments:',checkpoint['net_args'])
 
-        batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2"]
+        batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2", 'sequence_p1','sequence_p2']
 
         transformations = (
             Compose([CenterPairAtoms(as_single=True), 
@@ -60,8 +61,11 @@ if __name__ == "__main__":
             else Compose([])
         )
 
-        pre_transformations=Compose([SurfacePrecompute(net.preprocess_surface, False),
-                                     GenerateMatchingLabels(args['threshold'])])
+        pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
+                                     GenerateMatchingLabels(args['threshold'])]
+        if args['martini']:
+            pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
+        pre_transformations=Compose(pre_transformations)
 
         print('# Loading testing set')   
         if args['single_pdb'] != "":

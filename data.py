@@ -137,7 +137,7 @@ def encode_npy(p, encoders):
     
     if len(p)==0:
         return None
-    list_to_onehot=['atom_types']
+    list_to_onehot=['atom_types', 'sequence']
 
     mask=1 # to mask H atoms, for example
     for key in encoders:

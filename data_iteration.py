@@ -18,6 +18,7 @@ import os
 import warnings
 from data import *
 from model import dMaSIF, Lion
+from martinize import ReshapeBB, BB2Martini
 
 import gc
 from helper import *
@@ -133,6 +134,8 @@ def extract_single(P_batch, number):
     P = {}  # First and second proteins
     batch = P_batch["batch_xyz"] == number
     batch_atoms = P_batch["batch_atom_xyz"] == number
+    if 'batch_sequence' in P_batch:
+        batch_seq = P_batch["batch_sequence"] == number
 
     for key in P_batch.keys():
         if 'atom' in key:
@@ -143,6 +146,8 @@ def extract_single(P_batch, number):
                 P[key] -= (P_batch["batch_atom_xyz"]<number).sum()
             else:
                 P[key] = P_batch.__getitem__(key)[batch_atoms]
+        elif ("sequence" in key) or ('bb' in key):
+            P[key] = P_batch.__getitem__(key)[batch_seq]
         else:
             if ('face' in key) or ('edge' in key):
                 P[key] = P_batch.__getitem__(key)
@@ -175,7 +180,7 @@ def iterate(
     # Loop over one epoch:
     for protein_pair in tqdm(dataset):  
         #protein_pair.to(args['device'])
-        
+       
         if not test:
             optimizer.zero_grad()
 
@@ -376,24 +381,26 @@ def load_train_objs(args, net_args):
     print('# Model loaded')
     print('## Model arguments:',net_args)
 
-
     transformations = (
         Compose([CenterPairAtoms(as_single=True), 
                  RandomRotationPairAtoms(as_single=True)])
         if args['random_rotation']
         else Compose([])
     )
-
+    
     pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
                          GenerateMatchingLabels(args['threshold'])]
-
+    if args['martini']:
+        pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
     pre_transformations=Compose(pre_transformations)
 
     print('# Loading datasets')   
     prefix=f'{args["na"].lower()}_'
     if args['no_h']:
         prefix+='no_h_'
-        
+    if args['martini']:
+        prefix+='martini_'
+
     full_dataset = NpiDataset(args['data_dir'], args['training_list'],
                 transform=transformations, pre_transform=pre_transformations, 
                 encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter)
@@ -420,7 +427,7 @@ def train(rank: int, rank_list: int, args, dataset, net, optimizer, starting_epo
     warnings.simplefilter("ignore")
     ddp_setup(rank, rank_list)
 
-    batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2"]
+    batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2", 'sequence_p1','sequence_p2']
 
     train_loader = DataLoader(
         dataset[0], batch_size=args['batch_size'], collate_fn=CollateData(batch_vars),
@@ -446,6 +453,7 @@ def train(rank: int, rank_list: int, args, dataset, net, optimizer, starting_epo
 
     destroy_process_group()
 
+# these 2 classes are to replace corresponding classes from pyg
 class CollateData:
 
     def __init__(self, follow_batch=['atom_xyz','target_xyz']):

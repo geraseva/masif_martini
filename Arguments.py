@@ -1,6 +1,8 @@
 import argparse
 import json
 
+from prepare_rotamers import num2aa
+
 net_parser = argparse.ArgumentParser(description="Network parameters", add_help=False,usage='')
 
 net_parser.add_argument(
@@ -16,6 +18,12 @@ net_parser.add_argument(
     type=float,
     default=1.0,
     help="Resolution of the generated point cloud",
+)
+net_parser.add_argument(
+    "--smoothness",
+    type=float,
+    default=None,
+    help="Smoothness of the soft distance function",
 )
 net_parser.add_argument(
     "--distance",
@@ -129,13 +137,19 @@ train_inf_parser.add_argument(
     "--batch_size", type=int, default=1, help="Batch size"
 )
 train_inf_parser.add_argument( "--threshold", type=float, 
-    default=1, help="Distance threshold for interaction")
+    default=None, help="Distance threshold for interaction")
 
 train_inf_parser.add_argument(
     "--no_h",
     action='store_true',
     help="Whether to remove hydrogens",
 )
+train_inf_parser.add_argument(
+    "--martini",
+    action='store_true',
+    help="Whether to use reconstructed martini pseudoatoms",
+)
+
 train_inf_parser.add_argument('--encoders', type=json.loads, 
     help='How to encode atom labels', default={})
 
@@ -211,29 +225,62 @@ set_group.add_argument(
     help="Which structures to do inference on",
 )
 
+class dict_wrap:
+    def __init__(self, func):
+        self.func=func
+    def __getitem__(self, idx):
+        return self.func(idx)
+    def get(self, idx, d=None):
+        return self.func(idx)
+
+def identity(x):
+    return x        
 
 def parse_train():
     args, _ = main_parser.parse_known_args()
 
     if args.encoders=={}:
-        args.encoders['atom_resnames']=[{'name': 'atom_res',
+
+        if args.martini:
+
+            args.encoders={
+                    'atom_names':[{'name': 'atom_type',
+                      'encoder': {'N': 0, 'CA': 1, 'C': 2, '-': 0}
+                     },
+                                {'name': 'mask',
+                      'encoder': {'N': 1, 'CA': 1, 'C': 1, '-': 0}
+                     }],
+                    'atom_resnames':[{'name': 'sequence',
+                      'encoder': {**{a: i for i, a in enumerate(num2aa)},**{'-': 20}}
+                     }
+                    ],
+                    'atom_resids':[{'name': 'atom_resid',
+                      'encoder': dict_wrap(identity)
+                     }
+                    ],
+                    'atom_chains':[{'name': 'atom_chain',
+                      'encoder': dict_wrap(ord)
+                     }
+                    ]}    
+        else:
+            args.encoders={'atom_resnames':[{'name': 'atom_res',
                                                  'encoder': {'-':1 }
-                                            }]
-        args.encoders['atom_types']=[{'name': 'atom_types',
+                                            }],
+                           'atom_types': [{'name': 'atom_types',
                                                  'encoder': {"C": 0, "H": 1, "O": 2, "N": 3, "S": 4, "P": 5, '-': 4 }},
                                             {'name': 'atom_rad',
                                                  'encoder': {'H': 1.10, 'C': 1.70, 'N': 1.55, 'O': 1.52, '-': 1.80}
-                                            }]
-        if args.no_h:
-            for encoder in args.encoders['atom_types']:
-                val=encoder['encoder'].pop('H')
-                if encoder['name']=='atom_rad':
-                    continue
-                for key in encoder['encoder']:
-                    if encoder['encoder'][key]>val:
-                        encoder['encoder'][key]-=1 
-            args.encoders['atom_types'].append({'name': 'mask',
-                                                   'encoder': {"H": 0, "-": 1}})
+                                            }]}
+            if args.no_h:
+                for encoder in args.encoders['atom_types']:
+                    val=encoder['encoder'].pop('H')
+                    if encoder['name']=='atom_rad':
+                        continue
+                    for key in encoder['encoder']:
+                        if encoder['encoder'][key]>val:
+                            encoder['encoder'][key]-=1 
+                args.encoders['atom_types'].append({'name': 'mask',
+                                                       'encoder': {"H": 0, "-": 1}})
         if args.devices==None:
             if args.device==None:
                 args.device='cuda:0'
@@ -246,26 +293,44 @@ def parse_train():
         if args.random_rotation==None:
             args.random_rotation=True
         if net_args.atom_dims==None:
-            net_args.atom_dims=max(args.encoders['atom_types'][0]['encoder'].values())+1
+            if args.martini:
+                net_args.atom_dims=12
+            else:
+                net_args.atom_dims=max(args.encoders['atom_types'][0]['encoder'].values())+1
 
         if net_args.encoders=={}:
             net_args.encoders=args.encoders
         if net_args.distance==None:
             if args.no_h:
                 net_args.distance=1.25
+            elif args.martini:
+                net_args.distance=5.3
             else:
                 net_args.distance=1.05
         if net_args.sup_sampling==None:
             if args.no_h:
                 net_args.sup_sampling=34
+            elif args.martini:
+                net_args.sup_sampling=100
             else:
                 net_args.sup_sampling=20
         if net_args.knn==None:
             if args.no_h:
                 net_args.knn=10
+            elif args.martini:
+                net_args.knn=6
             else:
                 net_args.knn=16
-
+        if net_args.smoothness==None:
+            if args.martini:
+                net_args.smoothness=0.03
+            else:
+                net_args.smoothness=0.5
+        if args.threshold==None:
+            if args.martini:
+                args.threshold=3
+            else:
+                args.threshold=1            
         if args.training_list==None:
             if args.na=='protein':
                 args.training_list='lists/training_ppi.txt'
