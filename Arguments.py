@@ -2,6 +2,7 @@ import argparse
 import json
 
 from prepare_rotamers import num2aa
+from martinize import pseudoatom_radii, pseudoatom_weights, list_pseudo
 
 net_parser = argparse.ArgumentParser(description="Network parameters", add_help=False,usage='')
 
@@ -57,6 +58,12 @@ net_parser.add_argument(
     type=int,
     default=None,
     help="Number of nearest atoms",
+)
+net_parser.add_argument(
+    "--knn_threshold",
+    type=int,
+    default=None,
+    help="Distance threshold for nearest neighbors",
 )
 net_parser.add_argument(
     "--curvature_scales",
@@ -147,7 +154,12 @@ train_inf_parser.add_argument(
 train_inf_parser.add_argument(
     "--martini",
     action='store_true',
-    help="Whether to use reconstructed martini pseudoatoms",
+    help="Whether to use martini pseudoatoms",
+)
+train_inf_parser.add_argument(
+    "--from_bb",
+    action='store_true',
+    help="Reconstruct sidechains from backbone",
 )
 
 train_inf_parser.add_argument('--encoders', type=json.loads, 
@@ -176,7 +188,9 @@ train_parser.add_argument(
     default=None,
     help="Which structures to test on",
 )
-
+train_parser.add_argument(
+    "--port", type=int, default=12355, help="Port number"
+)
 train_parser.add_argument(
     "--n_epochs", type=int, default=50, help="Number of training epochs"
 )
@@ -241,7 +255,9 @@ def parse_train():
 
     if args.encoders=={}:
 
-        if args.martini:
+        if args.from_bb:
+
+            args.martini=True
 
             args.encoders={
                     'atom_names':[{'name': 'atom_type',
@@ -263,13 +279,21 @@ def parse_train():
                      }
                     ]}    
         else:
-            args.encoders={'atom_resnames':[{'name': 'atom_res',
-                                                 'encoder': {'-':1 }
-                                            }],
-                           'atom_types': [{'name': 'atom_types',
+            if not args.martini:
+                args.encoders={ 'atom_types': [{'name': 'atom_types',
                                                  'encoder': {"C": 0, "H": 1, "O": 2, "N": 3, "S": 4, "P": 5, '-': 4 }},
                                             {'name': 'atom_rad',
                                                  'encoder': {'H': 1.10, 'C': 1.70, 'N': 1.55, 'O': 1.52, '-': 1.80}
+                                            }]}
+            else:
+                args.encoders={'atom_types': [{'name': 'atom_types',
+                                                 'encoder': {x:i for i, x in enumerate(list_pseudo)}
+                                           },
+                                            {'name': 'atom_rad',
+                                                 'encoder': {**pseudoatom_radii, **{'-': 2**(1/6)*4.7}}
+                                            },
+                                            {'name': 'atom_weights',
+                                                 'encoder': {**pseudoatom_weights, **{'-': 72.0}}
                                             }]}
             if args.no_h:
                 for encoder in args.encoders['atom_types']:
@@ -304,7 +328,7 @@ def parse_train():
             if args.no_h:
                 net_args.distance=1.25
             elif args.martini:
-                net_args.distance=5.3
+                net_args.distance=3
             else:
                 net_args.distance=1.05
         if net_args.sup_sampling==None:
@@ -323,14 +347,14 @@ def parse_train():
                 net_args.knn=16
         if net_args.smoothness==None:
             if args.martini:
-                net_args.smoothness=0.03
+                net_args.smoothness=0.05
             else:
                 net_args.smoothness=0.5
         if args.threshold==None:
             if args.martini:
                 args.threshold=3
             else:
-                args.threshold=1            
+                args.threshold=1          
         if args.training_list==None:
             if args.na=='protein':
                 args.training_list='lists/training_ppi.txt'
@@ -355,6 +379,11 @@ def parse_train():
         net_args=net_args.__dict__
     else:
         net_args=None
+        if args.threshold==None:
+            if args.martini:
+                args.threshold=3
+            else:
+                args.threshold=1   
         if args.random_rotation==None:
             args.random_rotation=False
         if args.data_dir==None:

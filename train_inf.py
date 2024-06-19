@@ -27,7 +27,7 @@ if __name__ == "__main__":
             Path("models/").mkdir(exist_ok=False)
    
         fulltime=time.time()
-        mp.spawn(train, args=(rank_list, args, dataset, net, optimizer, starting_epoch, best_loss), nprocs=len(rank_list))
+        mp.spawn(train, args=(rank_list, args, dataset, net, optimizer, starting_epoch, best_loss, args['port']), nprocs=len(rank_list))
 
         fulltime=time.time()-fulltime
         print(f'## Execution complete {fulltime} seconds')
@@ -63,7 +63,7 @@ if __name__ == "__main__":
 
         pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
                                      GenerateMatchingLabels(args['threshold'])]
-        if args['martini']:
+        if args['from_bb']:
             pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
         pre_transformations=Compose(pre_transformations)
 
@@ -82,7 +82,8 @@ if __name__ == "__main__":
             if args['protonate']:
                 protonate(filename,filename)
             protein_pair=load_protein_pair(filename, args['encoders'], pspl[1], 
-                                            pspl[2] if len(pspl)==3 else None)
+                                            pspl[2] if len(pspl)==3 else None, 
+                                            martini=('12' if args['martini'] and not args['from_bb'] else ''))
             if protein_pair==None:
                 print(f'##! Skipping non-existing files for {pdb}' )
             else:

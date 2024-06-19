@@ -91,7 +91,7 @@ def soft_distances(x, y, batch_x, batch_y, smoothness=0.01, atom_rad=None):
         D_ij.ranges = diagonal_ranges(batch_x, batch_y)
 
     if atom_rad is not None:
-        smoothness = smoothness * atom_rad / 1.10
+        smoothness = smoothness * atom_rad
         smoothness_i = LazyTensor(smoothness[:, None, None])
 
         # Compute an estimation of the mean smoothness in a neighborhood

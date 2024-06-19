@@ -28,6 +28,7 @@ import os
 
 from helper import *
 from config import *
+from martinize import martinize
 
 PROTEIN_LETTERS = [x.upper() for x in IUPACData.protein_letters_3to1.keys()]
 
@@ -49,7 +50,8 @@ def find_modified_residues(path):
 
 
 def load_structure_np(structure, chain_ids=None, 
-                      modified=['LLP', 'KCX', 'FME', 'CSO', 'SEP', 'NH2', 'PCA', 'TPO', 'ACE', 'MSE']):
+                      modified=['LLP', 'KCX', 'FME', 'CSO', 'SEP', 'NH2', 'PCA', 'TPO', 'ACE', 'MSE'], 
+                      martini=False):
     
     if not isinstance(structure, Bio.PDB.Structure.Structure):
         parser = PDBParser(QUIET=True)
@@ -73,15 +75,28 @@ def load_structure_np(structure, chain_ids=None,
         if (chain_ids == None) or (chain.get_id() in chain_ids):
             for residue in chain:
                 het = residue.get_id()
-                if (het[0] == " ") or (het[0][-3:] in modified):
-                    for atom in residue:
-                        p['atom_xyz'].append(atom.get_coord())
-                        p['atom_types'].append(atom.element)
-                        p['atom_names'].append(atom.get_name())
-                        p['atom_ids'].append(atom.get_id())
-                        p['atom_resnames'].append(residue.get_resname())
-                        p['atom_resids'].append(residue.get_id()[1])
-                        p['atom_chains'].append(chain.get_id())
+                if martini:
+                    if (het[0] == " "):
+                        ps_coords, ps_types= martinize([residue.get_resname()], 
+                                                       [[atom.get_name() for atom in residue.get_atoms()]], 
+                                                       [[atom.get_coord() for atom in residue.get_atoms()]])
+                        for atom, coord in zip(ps_types[0], ps_coords[0]):
+                            p['atom_xyz'].append(coord)
+                            p['atom_types'].append(atom)
+                            p['atom_resnames'].append(residue.get_resname())
+                            p['atom_resids'].append(residue.get_id()[1])
+                            p['atom_chains'].append(chain.get_id())
+    
+                else:
+                    if (het[0] == " ") or (het[0][-3:] in modified):
+                        for atom in residue:
+                            p['atom_xyz'].append(atom.get_coord())
+                            p['atom_types'].append(atom.element)
+                            p['atom_names'].append(atom.get_name())
+                            p['atom_ids'].append(atom.get_id())
+                            p['atom_resnames'].append(residue.get_resname())
+                            p['atom_resids'].append(residue.get_id()[1])
+                            p['atom_chains'].append(chain.get_id())
     
     p['atom_xyz'] = np.stack(p['atom_xyz'])
     for key in p:
@@ -150,6 +165,7 @@ def encode_npy(p, encoders):
             p[key]=p[key][mask]
 
     protein_data={}
+
     protein_data['atom_xyz']=tensor(p['atom_xyz'])
 
     for key in encoders:
@@ -164,26 +180,26 @@ def encode_npy(p, encoders):
                 protein_data[aa['name']] = enc
     return protein_data
 
-def load_protein_pair(filename, encoders, chains1, chains2=None):
+def load_protein_pair(filename, encoders, chains1, chains2=None, martini='12'):
     protein_pair = PairData()   
     parser = PDBParser(QUIET=True)
         
-    try:
+    if True:
         structure = parser.get_structure('sample', filename)
         modified=find_modified_residues(filename)
             
-        p1=load_structure_np(structure, chain_ids=chains1, modified=modified)
+        p1=load_structure_np(structure, chain_ids=chains1, modified=modified, martini=('1' in martini))
         p1 = encode_npy(p1, encoders=encoders)
         protein_pair.from_dict(p1, chain_idx=1)
 
         if chains2 is not None and chains2!='':
-            p2=load_structure_np(structure, chain_ids=chains2, modified=modified)
+            p2=load_structure_np(structure, chain_ids=chains2, modified=modified, martini=('2' in martini))
             p2 = encode_npy(p2, encoders=encoders)
             protein_pair.from_dict(p2, chain_idx=2)
-    except KeyboardInterrupt:
-        raise KeyboardInterrupt
-    except:
-        protein_pair=None
+    #except KeyboardInterrupt:
+    #    raise KeyboardInterrupt
+    #except:
+    #    protein_pair=None
 
     return protein_pair
 
@@ -279,7 +295,7 @@ class NpiDataset(Dataset):
 
     def __init__(self, root, list_file, encoders, prefix='',
         transform=None, pre_transform=None, pre_filter=None, 
-        store=True):
+        store=True, martini=''):
         
         if isinstance(list_file,list):
             self.list = list_file
@@ -297,6 +313,7 @@ class NpiDataset(Dataset):
         self.pre_transform=pre_transform
         self.pre_filter=pre_filter
         self.encoders=encoders
+        self.martini=martini
         
         if not all([os.path.exists(x) for x in self.processed_file_names]):
             for protonated_file in self.raw_file_names:
@@ -328,7 +345,8 @@ class NpiDataset(Dataset):
         pspl=idx.split(' ')
 
         protein_pair=load_protein_pair(f'{self.raw_dir}/{pspl[0]}.pdb', 
-                                       self.encoders, pspl[1], pspl[2] if len(pspl)==3 else None)
+                                       self.encoders, pspl[1], pspl[2] if len(pspl)==3 else None, 
+                                       martini=self.martini)
         protein_pair.idx=idx
         if protein_pair is None:
             print(f'##! Skipping non-existing files for {idx}' )
@@ -347,6 +365,7 @@ class NpiDataset(Dataset):
         processed_dataset=[]
         for x in tqdm(self.list):
             processed_dataset.append(self.load_single(x))
+
         processed_idx=[idx for i, idx in enumerate(self.list) if processed_dataset[i]!=None]
         processed_dataset=[x for x in processed_dataset if x!=None]
 

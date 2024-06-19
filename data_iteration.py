@@ -266,10 +266,10 @@ def iterate(
     # Final post-processing:
     return info
 
-def ddp_setup(rank, rank_list):
+def ddp_setup(rank, rank_list, port=12355):
 
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
+    os.environ["MASTER_PORT"] = str(port)
     init_process_group(backend="nccl", rank=rank, world_size=len(rank_list))
     torch.cuda.set_device(rank_list[rank])
 
@@ -390,23 +390,28 @@ def load_train_objs(args, net_args):
     
     pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
                          GenerateMatchingLabels(args['threshold'])]
-    if args['martini']:
+    if args['from_bb']:
         pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
+
     pre_transformations=Compose(pre_transformations)
 
     print('# Loading datasets')   
     prefix=f'{args["na"].lower()}_'
     if args['no_h']:
         prefix+='no_h_'
+    if args['from_bb']:
+        prefix+='from_bb_'
     if args['martini']:
         prefix+='martini_'
 
     full_dataset = NpiDataset(args['data_dir'], args['training_list'],
                 transform=transformations, pre_transform=pre_transformations, 
-                encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter)
+                encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter,
+                martini=('12' if args['martini'] and not args['from_bb'] else ''))
     test_dataset = NpiDataset(args['data_dir'], args['testing_list'],
                 transform=transformations, pre_transform=pre_transformations,
-                encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter)
+                encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter,
+                martini=('12' if args['martini'] and not args['from_bb'] else ''))
 
 # Train/Validation split:
     train_nsamples = len(full_dataset)
@@ -422,10 +427,10 @@ def load_train_objs(args, net_args):
     return (train_dataset,val_dataset,test_dataset), net, optimizer, starting_epoch, best_loss
 
 
-def train(rank: int, rank_list: int, args, dataset, net, optimizer, starting_epoch, best_loss):
+def train(rank: int, rank_list: int, args, dataset, net, optimizer, starting_epoch, best_loss, port=12355):
 
     warnings.simplefilter("ignore")
-    ddp_setup(rank, rank_list)
+    ddp_setup(rank, rank_list, port=port)
 
     batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2", 'sequence_p1','sequence_p2']
 
@@ -467,6 +472,8 @@ class CollateData:
             pdb_ids.append(d.idx)
             # add batch
             for key in self.follow_batch:
+                if key not in d.keys:
+                    continue
                 bkey=f'batch_{key}'
                 d[bkey]=torch.zeros((d[key].shape[0],), dtype=int).to(d[key].device) 
             # increment

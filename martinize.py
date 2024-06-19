@@ -16,8 +16,11 @@ mapping = {
         "UNK":  nsplit(bb + " CB"), # added unknown atoms as alanines
         "MAS":  nsplit(bb + " CB"),
         "CYS":  nsplit(bb, "CB SG"),
+        "SEC":  nsplit(bb, "CB SEG"),
         "ASP":  nsplit(bb, "CB CG OD1 OD2"),
         "GLU":  nsplit(bb, "CB CG CD OE1 OE2"),
+        "ASX":  nsplit(bb, "CB CG ND1 ND2 OD1 OD2 HD11 HD12 HD21 HD22"),
+        "GLX":  nsplit(bb, "CB CG CD OE1 OE2 NE1 NE2 HE11 HE12 HE21 HE22"),
         "PHE":  nsplit(bb, "CB CG CD1 HD1", "CD2 HD2 CE2 HE2", "CE1 HE1 CZ HZ"),
         "GLY":  nsplit(bb),
         "HIS":  nsplit(bb, "CB CG", "CD2 HD2 NE2 HE2", "ND1 HD1 CE1 HE1"),
@@ -40,6 +43,10 @@ mapping = {
         "DG": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1'", "N9 C4", "C8 N7 C5", "C6 O6 N1", "C2 N2 N3"),
         "DC": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1'", "N1 C6", "C5 C4 N4", "N3 C2 O2"),
         "DT": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1'", "N1 C6", "C5 C4 O4 C7 C5M", "N3 C2 O2"),
+        "A": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1', O2'", "N9 C4", "C8 N7 C5", "C6 N6 N1", "C2 N3"),
+        "G": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1', O2'", "N9 C4", "C8 N7 C5", "C6 O6 N1", "C2 N2 N3"),
+        "C": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1', O2'", "N1 C6", "C5 C4 N4", "N3 C2 O2"),
+        "T": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1', O2'", "N1 C6", "C5 C4 O4 C7 C5M", "N3 C2 O2"),
 } # from https://github.com/cgmartini/martinize.py/
 
 pseudoatom_types = {
@@ -47,8 +54,11 @@ pseudoatom_types = {
         "UNK":  ['P4'], # added unknown atoms as alanines
         "MAS":  ['P4'],
         "CYS":  ['P5','C5'],
+        "SEC":  ['P5','C5'],
         "ASP":  ['P5','Qa'],
         "GLU":  ['P5','Qa'],
+        "ASX":  ['P5','P4'],
+        "GLX":  ['P5','P4'], 
         "PHE":  ['P5','SC4','SC4','SC4'],
         "GLY":  ['P5'],
         "HIS":  ['P5','SC4','SP1','SP1'],
@@ -75,20 +85,38 @@ pseudoatom_types = {
         "U": ["Q0","SN0","SNda", "TN0", "TT2", "TT3"],
 } # from http://www.cgmartini.nl/images/parameters/ITP/martini_v2.1_aminoacids.itp
 
+
 pseudoatom_radii = {
-    'P5': 2**(1/6)*0.47, 
-    'AC1': 2**(1/6)*0.47,
-    'C5': 2**(1/6)*0.47,
-    'SP1': 2**(1/6)*0.43, 
-    'N0': 2**(1/6)*0.47, 
-    'AC2': 2**(1/6)*0.47,
-    'C3': 2**(1/6)*0.47,
-    'P1': 2**(1/6)*0.47,
-    'Qa': 2**(1/6)*0.47,
-    'P4': 2**(1/6)*0.47,
-    'Qd': 2**(1/6)*0.47, 
-    'SC4': 2**(1/6)*0.43
+    'P5': 0.47*10, 
+    'AC1': 0.47*10,
+    'C5': 0.47*10,
+    'SP1': 0.43*10, 
+    'N0': 0.47*10, 
+    'AC2': 0.47*10,
+    'C3': 0.47*10,
+    'P1': 0.47*10,
+    'Qa': 0.47*10,
+    'P4': 0.47*10,
+    'Qd': 0.47*10, 
+    'SC4': 0.43*10
 } # from http://www.cgmartini.nl/images/parameters/ITP/martini_v2.0.itp
+
+pseudoatom_weights = {
+    'P5': 72.0,
+    'AC1': 72.0,
+    'C5': 72.0,
+    'SP1': 72.0, 
+    'N0': 72.0, 
+    'AC2': 72.0,
+    'C3': 72.0,
+    'P1': 72.0,
+    'Qa': 72.0,
+    'P4': 72.0,
+    'Qd': 72.0, 
+    'SC4': 72.0
+} # from http://www.cgmartini.nl/images/parameters/ITP/martini_v2.0.itp
+
+list_pseudo=list(pseudoatom_radii.keys())
 
 def martinize(seq, atoms, coords):
     ps_coords=[]
@@ -105,9 +133,10 @@ def martinize(seq, atoms, coords):
                     av[j][0][1]+=xyz[1]*mass[a[0]]
                     av[j][0][2]+=xyz[2]*mass[a[0]]
                     av[j][1]+=mass[a[0]]
-        av=[[ps[0][0]/ps[1],ps[0][1]/ps[1],ps[0][2]/ps[1]] for ps in av]
+        av=[[ps[0][0]/ps[1],ps[0][1]/ps[1],ps[0][2]/ps[1]] for ps in av if ps[1]>0]
+        
         ps_coords.append(av)
-        ps_types.append(pseudoatom_types[aa])
+        ps_types.append(pseudoatom_types[aa][:len(av)])
     return ps_coords, ps_types
 
 
@@ -162,13 +191,13 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
         num2ps=list(set([x for y in ts for x in y ]))
         ps2num={x:i for i, x in enumerate(num2ps)}
 
-        rs=[[pseudoatom_radii[y]*10 for y in x] for x in ts]
+        rs=[[pseudoatom_radii[y] for y in x] for x in ts]
+        ws=[[pseudoatom_weights[y] for y in x] for x in ts]
         ts=[[ps2num[y] for y in x] for x in ts] 
 
         self.num_types=len(num2ps) # T
         
         # pad coords and types
-        ws=np.ones((self.num_aa,self.num_pseudo)) # weight padded pseudoatoms
         for i in range(len(ps)):
             assert len(ps[i])==len(ts[i])
             to_add=self.num_pseudo-len(ps[i])
@@ -176,11 +205,14 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
                 ps[i]=[ps[i][0]]+ps[i]
                 ts[i]=[ts[i][0]]+ts[i]
                 rs[i]=[rs[i][0]]+rs[i]
-            ws[i][:to_add+1]/=(to_add+1)
+                ws[i]=[ws[i][0]]+ws[i]
+            for j in range(to_add):
+                ws[i][j]/=(to_add+1)
 
         ps=np.array(ps)
         ts=np.array(ts)
         rs=np.array(rs)
+        ws=np.array(ws)
         
         self.map_coords=tensor(ps)[None,:,:,:] # (1,A,P,3)
         self.map_types=F.one_hot(inttensor(ts),
@@ -198,6 +230,7 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
             xyz = (sequence*self.map_coords*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1) # (L,P, 3)      
             types = (sequence*self.map_types*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1) # (L, P, T)
             radii = (sequence*self.map_radii*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1) # (L, P, 1)
+            weights = (sequence*self.map_weights).sum(1) # (L, P, 1)
         
             Rs, Ts = rigid_from_3_points(bb[None,:,0,:],bb[None,:,1,:],bb[None,:,2,:]) # transforms
             xyz = torch.einsum('lpij,lpj->lpi', Rs, xyz.transpose(0,1)) + Ts
@@ -205,10 +238,12 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
             xyz=xyz.transpose(0,1).reshape((-1,3))
             types=types.reshape((-1,self.num_types))
             radii=radii.reshape(-1)
+            weights=weights.reshape(-1)
         
             data[f'atom_xyz{ch}']=xyz 
             data[f'atom_types{ch}']=types
             data[f'atom_rad{ch}']=radii
+            data[f'atom_weights{ch}']=weights
 
         return data 
 # Это еще надо наверное завернуть в torch Module и прописать форвард и что-то там еще, потом разберусь

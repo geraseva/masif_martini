@@ -114,7 +114,7 @@ def get_atom_features(x, y, x_batch, y_batch, y_atomtype, k=16):
 
     return feature
 
-def get_features_v(x, y, x_batch, y_batch, y_atomtype, k=16, gamma=1):
+def get_features_v(x, y, x_batch, y_batch, y_atomtype, y_atom_weights=None, k=16, gamma=1, threshold=None):
 
     N, D = x.shape
     x_i = LazyTensor(x[:, None, :])
@@ -134,6 +134,12 @@ def get_features_v(x, y, x_batch, y_batch, y_atomtype, k=16, gamma=1):
     
     dists = (vecs ** 2).sum(-1)
 
+    mask=torch.ones_like(dists)
+
+    if threshold!=None:
+        mask*=(dists<=threshold**2)
+        mask*=(dists>=1/2**2)
+
     dists = torch.pow(dists+1e-8,-(1+gamma)/2) # (N, K)
     
     _, num_dims = y_atomtype.size()
@@ -142,9 +148,12 @@ def get_features_v(x, y, x_batch, y_batch, y_atomtype, k=16, gamma=1):
     norm_vec=vecs*dists[:, :, None] #(N, k, D)
     
     feature = y_atomtype[idx, :].view(N, k, num_dims)
+    if y_atom_weights!=None:
+        feature*=y_atom_weights[idx].view(N, k, 1)
 
     feature=norm_vec[:,:,:,None] * feature[:,:,None,:] # (N, k, D, num_dims )
-
+    
+    feature=feature*mask[:, :, None, None]
 
     return torch.transpose(feature, 1, 3) # (N, num_dims, D, k )
 
@@ -153,6 +162,7 @@ class AtomNet_V(nn.Module):
         super(AtomNet_V, self).__init__()
         self.atom_dims=args['atom_dims']
         self.k = args['knn']
+        self.threshold=args['knn_threshold']
         self.transform_types = nn.Sequential(
             nn.Linear(args['atom_dims'], args['chem_dims']),
             nn.LeakyReLU(negative_slope=0.2),
@@ -163,8 +173,8 @@ class AtomNet_V(nn.Module):
         )
         self.dropout=nn.Dropout2d(args['dropout'])
 
-        self.att=nn.Sequential(
-            nn.Linear(self.k, 1, bias=False))
+        #self.att=nn.Sequential(
+        #    nn.Linear(self.k, 1, bias=False))
         
         self.embedding = nn.Sequential(
             nn.Linear(args['chem_dims'],args['chem_dims']),
@@ -177,12 +187,12 @@ class AtomNet_V(nn.Module):
         )
 
 
-    def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch):
+    def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch, atom_weights=None):
 
         atomtypes=atomtypes[:,:self.atom_dims]
         atomtypes = self.transform_types(atomtypes)
-        fx = get_features_v(xyz, atom_xyz, batch, atom_batch, atomtypes, k=self.k)
-        fx = self.att(self.dropout(fx)).squeeze(-1)
+        fx = get_features_v(xyz, atom_xyz, batch, atom_batch, atomtypes, atom_weights, k=self.k, threshold=self.threshold)
+        fx = self.dropout(fx).sum(-1)
         fx= torch.sqrt(torch.square(fx).sum(dim=-1, keepdim=False))
         fx = self.embedding(fx)
         return fx
@@ -192,6 +202,7 @@ class AtomNet_V_MP(nn.Module):
         super(AtomNet_V_MP, self).__init__()
         self.atom_dims=args['atom_dims']
         self.k = args['knn']
+        self.threshold=args['knn_threshold']
         self.transform_types = nn.Sequential(
             nn.Linear(args['atom_dims'], args['chem_dims']),
             nn.LeakyReLU(negative_slope=0.2),
@@ -207,11 +218,11 @@ class AtomNet_V_MP(nn.Module):
             nn.LeakyReLU(negative_slope=0.2),
             nn.Linear(args['chem_dims'], args['chem_dims'])
         )
-        self.att=nn.Sequential(
-            nn.Linear(self.k, 1, bias=False))
+        #self.att=nn.Sequential(
+        #    nn.Linear(self.k, 1, bias=False))
 
-        self.att_mp=nn.Sequential(
-            nn.Linear(self.k, 1, bias=False))
+        #self.att_mp=nn.Sequential(
+        #    nn.Linear(self.k, 1, bias=False))
 
         self.bil=nn.Bilinear(args['chem_dims'],args['chem_dims'],args['chem_dims'], bias=False)
 
@@ -233,14 +244,14 @@ class AtomNet_V_MP(nn.Module):
             nn.Linear(args['chem_dims'], args['chem_dims']),
         )
 
-    def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch):
+    def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch, atom_weights=None):
 
         atomtypes=atomtypes[:,:self.atom_dims]
 
         fx = self.transform_types_mp(atomtypes)
-        fx = get_features_v(atom_xyz, atom_xyz, atom_batch, atom_batch, fx, k=self.k+1)
+        fx = get_features_v(atom_xyz, atom_xyz, atom_batch, atom_batch, fx, atom_weights, k=self.k+1, threshold=self.threshold)
         fx=fx[:,:,:,1:] # Remove self
-        fx = self.att_mp(self.dropout_mp(fx)).squeeze(-1)
+        fx = self.dropout_mp(fx).sum(-1)
         fx= torch.sqrt(torch.square(fx).sum(dim=-1, keepdim=False))
         fx = self.embedding_mp(fx)
        
@@ -248,8 +259,8 @@ class AtomNet_V_MP(nn.Module):
 
         atomtypes=atomtypes-self.bil(atomtypes,fx)
 
-        fx = get_features_v(xyz, atom_xyz, batch, atom_batch, atomtypes, k=self.k)
-        fx = self.att(self.dropout(fx)).squeeze(-1)
+        fx = get_features_v(xyz, atom_xyz, batch, atom_batch, atomtypes, atom_weights, k=self.k, threshold=self.threshold)
+        fx = self.dropout(fx).sum(-1)
         fx= torch.sqrt(torch.square(fx).sum(dim=-1, keepdim=False))
         fx = self.embedding(fx)
 
@@ -565,7 +576,7 @@ class dMaSIF(nn.Module):
 
         # Compute chemical features on-the-fly:
         chemfeats = self.atomnet(
-            P["xyz"], P["atom_xyz"], P["atom_types"], P["batch_xyz"], P["batch_atom_xyz"]
+            P["xyz"], P["atom_xyz"], P["atom_types"], P["batch_xyz"], P["batch_atom_xyz"], P.get('atom_weights')
         )
 
         # Concatenate our features:
