@@ -240,10 +240,10 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
             radii=radii.reshape(-1)
             weights=weights.reshape(-1)
         
-            data[f'atom_xyz{ch}']=xyz 
-            data[f'atom_types{ch}']=types
-            data[f'atom_rad{ch}']=radii
-            data[f'atom_weights{ch}']=weights
+            data[f'atom_xyz{ch}']=xyz.detach()
+            data[f'atom_types{ch}']=types.detach()
+            data[f'atom_rad{ch}']=radii.detach()
+            data[f'atom_weights{ch}']=weights.detach()
 
         return data 
 # Это еще надо наверное завернуть в torch Module и прописать форвард и что-то там еще, потом разберусь
@@ -291,7 +291,7 @@ class ReshapeBB: # то сut backbone atoms from the protein
                 elif 'atom' in key:
                     del data[key]
                 else:
-                    data[key]=data[key][::3]
-            data[f'bb_xyz{ch}']=bb_xyz # coordinates of 3 backbone atoms
+                    data[key]=data[key][::3].detach()
+            data[f'bb_xyz{ch}']=bb_xyz.detach() # coordinates of 3 backbone atoms
 
         return data    

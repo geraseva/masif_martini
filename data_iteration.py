@@ -349,6 +349,7 @@ class Trainer:
     
         print('# Start training')
         for i in range(starting_epoch, self.args['n_epochs']):
+            torch.cuda.empty_cache()
             self._run_epoch(i)
             
 

@@ -254,6 +254,10 @@ class PairData:
         for key in self.keys:
             self._storage[key]=self._storage[key].to(device)
     
+    def detach(self):
+        for key in self.keys:
+            self._storage[key]=self._storage[key].detach()
+            
     def contiguous(self):
         for key in self.keys:
             self._storage[key]=self._storage[key].contiguous()
