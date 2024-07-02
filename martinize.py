@@ -1,6 +1,7 @@
 
 from prepare_rotamers import num2aa, ideal_coords
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
@@ -246,6 +247,45 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
             data[f'atom_weights{ch}']=weights.detach()
 
         return data 
+
+class BB2MartiniModule(nn.Module, BB2Martini):
+    
+    def __init__(self, chains=['_p1','_p2']):
+
+        super(nn.Module, self).__init__()
+        super(BB2Martini,self).__init__(chains)
+
+        self.map_coords=nn.Parameter(self.map_coords)
+        self.map_types=nn.Parameter(self.map_types)
+        self.map_weights=nn.Parameter(self.map_weights)
+        self.map_radii=nn.Parameter(self.map_radii)
+
+    def forward(self, data):
+
+        for ch in self.chains: 
+            sequence=data[f'sequence{ch}'][:,:,None,None]
+            bb=data[f'bb_xyz{ch}']
+                       
+            xyz = (sequence*self.map_coords*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1) # (L,P, 3)      
+            types = (sequence*self.map_types*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1) # (L, P, T)
+            radii = (sequence*self.map_radii*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1) # (L, P, 1)
+            weights = (sequence*self.map_weights).sum(1) # (L, P, 1)
+        
+            Rs, Ts = rigid_from_3_points(bb[None,:,0,:],bb[None,:,1,:],bb[None,:,2,:]) # transforms
+            xyz = torch.einsum('lpij,lpj->lpi', Rs, xyz.transpose(0,1)) + Ts
+        
+            xyz=xyz.transpose(0,1).reshape((-1,3))
+            types=types.reshape((-1,self.num_types))
+            radii=radii.reshape(-1)
+            weights=weights.reshape(-1)
+
+            data[f'atom_xyz{ch}']=xyz
+            data[f'atom_types{ch}']=types
+            data[f'atom_rad{ch}']=radii
+            data[f'atom_weights{ch}']=weights
+
+        return data 
+
 # Это еще надо наверное завернуть в torch Module и прописать форвард и что-то там еще, потом разберусь
 
 
