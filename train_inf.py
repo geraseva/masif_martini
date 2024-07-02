@@ -11,33 +11,105 @@ if __name__ == "__main__":
 
     from pathlib import Path
     import json
+    from torch.utils.data import DataLoader, random_split
+
+    from data import *
+    from model import dMaSIF, Lion
+    from data_iteration import train, iterate, CollateData, Compose
+    from martinize import ReshapeBB, BB2Martini
 
     if args['mode']=='train':
 
-        from data_iteration import load_train_objs, train
         import time
+        import torch
         import torch.multiprocessing as mp
+
         rank_list=[x for x in args['devices'] if x!='cpu']
         args['devices']=rank_list
 
         print('## World size:',len(rank_list))
     
-        dataset, net, optimizer, starting_epoch, best_loss = load_train_objs(args, net_args)
+        if args['restart_training'] != "":
+            checkpoint = torch.load("models/" + args['restart_training'], map_location=args['devices'][0])
+            net=dMaSIF(checkpoint['net_args'])
+            net.load_state_dict(checkpoint["model_state_dict"])
+            net.to(args['devices'][0])
+            optimizer = Lion(net.parameters(), lr=1e-4)
+            optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            starting_epoch = checkpoint["epoch"]+1
+            best_loss = checkpoint["best_loss"]
+        else:
+            net = dMaSIF(net_args)
+            optimizer = Lion(net.parameters(), lr=1e-4)
+            #optimizer = torch.optim.Adam(net.parameters(), lr=3e-4, amsgrad=True)
+            starting_epoch = 0
+            best_loss = 1e10 
+        
+        if args['transfer_learning'] != "":
+            checkpoint = torch.load("models/" + args['transfer_learning'], map_location=args['devices'][0])
+            for module in checkpoint["model_state_dict"]:
+                try:
+                    net[module].load_state_dict(checkpoint["model_state_dict"][module])
+                    print('Loaded precomputed module',module)
+                except:
+                    pass 
+
+        print('# Model loaded')
+        print('## Model arguments:',net_args)
+
+        transformations = (
+            Compose([CenterPairAtoms(as_single=True), 
+                     RandomRotationPairAtoms(as_single=True)])
+            if args['random_rotation']
+            else Compose([])
+        )
+    
+        pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
+                             GenerateMatchingLabels(args['threshold'])]
+        if args['from_bb']:
+            pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
+
+        pre_transformations=Compose(pre_transformations)
+
+        print('# Loading datasets')   
+        prefix=f'{args["na"].lower()}_'
+        if args['no_h']:
+            prefix+='no_h_'
+        if args['from_bb']:
+            prefix+='from_bb_'
+        if args['martini']:
+            prefix+='martini_'
+
+        full_dataset = NpiDataset(args['data_dir'], args['training_list'],
+                    transform=transformations, pre_transform=pre_transformations, 
+                    encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter,
+                    martini=('12' if args['martini'] and not args['from_bb'] else ''))
+        test_dataset = NpiDataset(args['data_dir'], args['testing_list'],
+                    transform=transformations, pre_transform=pre_transformations,
+                    encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter,
+                    martini=('12' if args['martini'] and not args['from_bb'] else ''))
+
+    # Train/Validation split:
+        train_nsamples = len(full_dataset)
+        val_nsamples = int(train_nsamples * args['validation_fraction'])
+        train_nsamples = train_nsamples - val_nsamples
+        train_dataset, val_dataset = random_split(
+            full_dataset, [train_nsamples, val_nsamples]
+        )
+        print('## Train nsamples:',train_nsamples)
+        print('## Val nsamples:',val_nsamples)
+        print('## Test nsamples:',len(test_dataset))
+
         if not Path("models/").exists():
             Path("models/").mkdir(exist_ok=False)
    
         fulltime=time.time()
-        mp.spawn(train, args=(rank_list, args, dataset, net, optimizer, starting_epoch, best_loss, args['port']), nprocs=len(rank_list))
+        mp.spawn(train, args=(rank_list, args, (train_dataset,val_dataset,test_dataset), net, optimizer, 
+                              starting_epoch, best_loss, args['port']), nprocs=len(rank_list))
 
         fulltime=time.time()-fulltime
         print(f'## Execution complete {fulltime} seconds')
     else:
-        from torch.utils.data import DataLoader
-
-        from data import *
-        from model import dMaSIF
-        from data_iteration import iterate, CollateData, Compose
-        from martinize import ReshapeBB, BB2Martini
 
         model_path = "models/" + args['experiment_name']
         checkpoint=torch.load(model_path, map_location=args['device'])

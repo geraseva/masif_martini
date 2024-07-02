@@ -64,14 +64,14 @@ class Lion(Optimizer):
                 # init state - exponential moving average of gradient values
 
                 if len(state) == 0:
-                    state['exp_avg'] = torch.zeros_like(p)
+                    state['exp_avg'] = torch.zeros_like(p, device=p.device)
 
                 exp_avg = state['exp_avg']
 
                 p.data.mul_(1 - lr * wd)
 
                 # weight update
-
+                
                 update = exp_avg.clone().mul_(beta1).add(grad, alpha = 1 - beta1).sign_()
                 p.add_(update, alpha = -lr)
 

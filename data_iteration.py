@@ -8,7 +8,6 @@ from torcheval.metrics.functional import binary_auroc
 from tqdm import tqdm
 import copy
 
-from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
@@ -17,8 +16,7 @@ from torch.distributed import init_process_group, destroy_process_group
 import os
 import warnings
 from data import *
-from model import dMaSIF, Lion
-from martinize import ReshapeBB, BB2Martini
+
 
 import gc
 from helper import *
@@ -352,81 +350,6 @@ class Trainer:
             torch.cuda.empty_cache()
             self._run_epoch(i)
             
-
-def load_train_objs(args, net_args):
-
-    net = dMaSIF(net_args)
-    optimizer = Lion(net.parameters(), lr=1e-4)
-    #optimizer = torch.optim.Adam(net.parameters(), lr=3e-4, amsgrad=True)
-    starting_epoch = 0
-    best_loss = 1e10 
-
-
-    if args['restart_training'] != "":
-        checkpoint = torch.load("models/" + args['restart_training'], map_location=args['devices'][0])
-        net=dMaSIF(checkpoint['net_args'])
-        net.load_state_dict(checkpoint["model_state_dict"])
-        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        starting_epoch = checkpoint["epoch"]+1
-        best_loss = checkpoint["best_loss"]
-
-    elif args['transfer_learning'] != "":
-        checkpoint = torch.load("models/" + args['transfer_learning'], map_location=args['devices'][0])
-        for module in checkpoint["model_state_dict"]:
-            try:
-                net[module].load_state_dict(checkpoint["model_state_dict"][module])
-                print('Loaded precomputed module',module)
-            except:
-                pass 
-
-    print('# Model loaded')
-    print('## Model arguments:',net_args)
-
-    transformations = (
-        Compose([CenterPairAtoms(as_single=True), 
-                 RandomRotationPairAtoms(as_single=True)])
-        if args['random_rotation']
-        else Compose([])
-    )
-    
-    pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
-                         GenerateMatchingLabels(args['threshold'])]
-    if args['from_bb']:
-        pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
-
-    pre_transformations=Compose(pre_transformations)
-
-    print('# Loading datasets')   
-    prefix=f'{args["na"].lower()}_'
-    if args['no_h']:
-        prefix+='no_h_'
-    if args['from_bb']:
-        prefix+='from_bb_'
-    if args['martini']:
-        prefix+='martini_'
-
-    full_dataset = NpiDataset(args['data_dir'], args['training_list'],
-                transform=transformations, pre_transform=pre_transformations, 
-                encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter,
-                martini=('12' if args['martini'] and not args['from_bb'] else ''))
-    test_dataset = NpiDataset(args['data_dir'], args['testing_list'],
-                transform=transformations, pre_transform=pre_transformations,
-                encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter,
-                martini=('12' if args['martini'] and not args['from_bb'] else ''))
-
-# Train/Validation split:
-    train_nsamples = len(full_dataset)
-    val_nsamples = int(train_nsamples * args['validation_fraction'])
-    train_nsamples = train_nsamples - val_nsamples
-    train_dataset, val_dataset = random_split(
-        full_dataset, [train_nsamples, val_nsamples]
-    )
-    print('## Train nsamples:',train_nsamples)
-    print('## Val nsamples:',val_nsamples)
-    print('## Test nsamples:',len(test_dataset))
-
-    return (train_dataset,val_dataset,test_dataset), net, optimizer, starting_epoch, best_loss
-
 
 def train(rank: int, rank_list: int, args, dataset, net, optimizer, starting_epoch, best_loss, port=12355):
 
