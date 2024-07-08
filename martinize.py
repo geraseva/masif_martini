@@ -1,12 +1,20 @@
-
-from prepare_rotamers import num2aa, ideal_coords
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import pickle
 
 from helper import *
 
+try:
+    with open('datasets/ideal_coords.pkl', 'rb') as f:
+        ideal_coords = pickle.load(f)
+except FileNotFoundError:
+    from prepare_rotamers import ideal_coords
+
+num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
+        'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
+        'UNK','MAS']
 
 def nsplit(*x):
     return [i.split() for i in x]
@@ -241,10 +249,10 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
             radii=radii.reshape(-1)
             weights=weights.reshape(-1)
         
-            data[f'atom_xyz{ch}']=xyz.detach()
-            data[f'atom_types{ch}']=types.detach()
-            data[f'atom_rad{ch}']=radii.detach()
-            data[f'atom_weights{ch}']=weights.detach()
+            data[f'atom_xyz{ch}']=xyz
+            data[f'atom_types{ch}']=types
+            data[f'atom_rad{ch}']=radii
+            data[f'atom_weights{ch}']=weights
 
         return data 
 

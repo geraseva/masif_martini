@@ -377,7 +377,7 @@ class NpiDataset(Dataset):
 
             print('Preprocessing files', self.name)
             processed_dataset = [
-                self.pre_transform(data) for data in tqdm(processed_dataset)
+                self.pre_transform(data).detach() for data in tqdm(processed_dataset)
             ]
 
         if self.pre_filter is not None:

@@ -48,7 +48,7 @@ def subsample(x, normals=None, batch=None, scale=1.0):
         if normals is None:
             points, batches = [], []
             for b in range(batch_size):
-                p = subsample(x[batch == b], scale=scale)
+                p, _, _= subsample(x[batch == b], scale=scale)
                 points.append(p)
                 batches.append(b * torch.ones_like(batch[: len(p)]))
 
@@ -56,7 +56,7 @@ def subsample(x, normals=None, batch=None, scale=1.0):
         else:
             points, batches, normals = [], [], []
             for b in range(batch_size):
-                p, n = subsample(x[batch == b], normals=normals[batch == b], scale=scale)
+                p, n, _= subsample(x[batch == b], normals=normals[batch == b], scale=scale)
                 points.append(p)
                 normals.append(n)
                 batches.append(b * torch.ones_like(batch[: len(p)]))
