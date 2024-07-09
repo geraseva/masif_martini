@@ -6,12 +6,12 @@ import torch.nn.functional as F
 import torch.autograd.profiler as profiler
 from pykeops.torch import LazyTensor
 
-from geometry_processing import (
+from .geometry_processing import (
     curvatures,
     atoms_to_points_normals,
 )
-from helper import *
-from geometry_processing import dMaSIFConv_seg
+from .helper import *
+from .geometry_processing import dMaSIFConv_seg
 
 # create Adam optimizer class from https://github.com/lucidrains/lion-pytorch
 

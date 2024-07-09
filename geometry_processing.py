@@ -3,7 +3,6 @@
 import numpy as np
 import torch
 from pykeops.torch import LazyTensor
-from helper import diagonal_ranges
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -11,7 +10,7 @@ from pykeops.torch.cluster import grid_cluster, cluster_ranges_centroids, from_m
 from math import pi, sqrt
 
 
-from helper import diagonal_ranges
+from .helper import diagonal_ranges
 
 # On-the-fly generation of the surfaces ========================================
 

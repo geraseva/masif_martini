@@ -3,14 +3,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import pickle
+import os
 
-from helper import *
+from .helper import *
 
 try:
-    with open('datasets/ideal_coords.pkl', 'rb') as f:
+    with open(os.path.dirname(os.path.abspath(__file__))+'/datasets/ideal_coords.pkl', 'rb') as f:
         ideal_coords = pickle.load(f)
 except FileNotFoundError:
-    from prepare_rotamers import ideal_coords
+    from .prepare_rotamers import ideal_coords
 
 num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
         'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',

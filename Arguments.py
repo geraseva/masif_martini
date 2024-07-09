@@ -5,7 +5,7 @@ num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
         'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
         'UNK','MAS'] # from https://github.com/baker-laboratory/rf_diffusion_all_atom/blob/main/chemical.py
         
-from martinize import pseudoatom_radii, pseudoatom_weights, list_pseudo
+from .martinize import pseudoatom_radii, pseudoatom_weights, list_pseudo
 
 net_parser = argparse.ArgumentParser(description="Network parameters", add_help=False,usage='')
 
