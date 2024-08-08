@@ -253,15 +253,18 @@ class PairData:
     def to(self, device):
         for key in self.keys:
             self._storage[key]=self._storage[key].to(device)
+        return self
     
     def detach(self):
         for key in self.keys:
-            self._storage[key]=self._storage[key].detach()
+            self._storage[key].detach()
+        return self
             
     def contiguous(self):
         for key in self.keys:
             self._storage[key]=self._storage[key].contiguous()
-    
+        return self
+
     def from_dict(self, mapping, chain_idx=None):
         if chain_idx==None:
             lbl=''
@@ -374,16 +377,17 @@ class NpiDataset(Dataset):
         processed_dataset=[x for x in processed_dataset if x!=None]
 
         if self.pre_transform is not None:
-
             print('Preprocessing files', self.name)
+
             processed_dataset = [
-                self.pre_transform(data).detach() for data in tqdm(processed_dataset)
+                self.pre_transform(data) for data in tqdm(processed_dataset)
             ]
 
         if self.pre_filter is not None:
-            processed_dataset = [data if self.pre_filter(data) else None for data in processed_dataset]
+            print('Filtering files', self.name)
+            processed_dataset = [data.detach() if self.pre_filter(data) else None for data in processed_dataset]
             processed_idx=[idx for i, idx in enumerate(processed_idx) if processed_dataset[i]!=None]
-            processed_dataset=[x for x in processed_dataset if x!=None]            
+            processed_dataset=[x for x in processed_dataset if x!=None]
         
         self.data=processed_dataset
         self.list=processed_idx
@@ -531,6 +535,25 @@ class RemoveSecondProtein(object):
 
         for key in keys:
             protein_pair.__delitem__(key)
+
+        return protein_pair
+
+class RemoveUnusedKeys(object):
+    r"""Remove second protein information"""
+
+    def __init__(self, keys):
+        self.keys=keys
+        for key in keys:
+            if '_p1' not in key and '_p2' not in key:
+                self.keys.append(key+'_p1')
+                self.keys.append(key+'_p2')
+
+    def __call__(self, protein_pair):
+
+        keys=[x for x in protein_pair.keys ]
+        for key in keys:
+            if key in self.keys:
+                protein_pair.__delitem__(key)
 
         return protein_pair
 

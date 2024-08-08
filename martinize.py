@@ -5,8 +5,11 @@ import numpy as np
 import pickle
 import os
 
-from .helper import *
-
+try:
+    from helper import *
+except ModuleNotFoundError:
+    from .helper import *
+    
 try:
     with open(os.path.dirname(os.path.abspath(__file__))+'/datasets/ideal_coords.pkl', 'rb') as f:
         ideal_coords = pickle.load(f)

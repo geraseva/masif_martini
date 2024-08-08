@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-import sys
+
 import os
 
 from pykeops.torch import LazyTensor
@@ -8,8 +8,12 @@ from pykeops.torch import LazyTensor
 from LigandMPNN.model_utils import ProteinMPNN
 from LigandMPNN.data_utils import restype_str_to_int, restype_1to3, restype_int_to_str
 
-from .martinize import BB2Martini
-from .model import dMaSIF
+try:
+    from martinize import BB2Martini
+    from model import dMaSIF
+except ModuleNotFoundError:
+    from .martinize import BB2Martini
+    from .model import dMaSIF    
 
 
 num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',

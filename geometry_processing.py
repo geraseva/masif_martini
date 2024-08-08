@@ -10,7 +10,10 @@ from pykeops.torch.cluster import grid_cluster, cluster_ranges_centroids, from_m
 from math import pi, sqrt
 
 
-from .helper import diagonal_ranges
+try:
+    from helper import diagonal_ranges
+except ModuleNotFoundError:
+    from .helper import diagonal_ranges
 
 # On-the-fly generation of the surfaces ========================================
 

@@ -16,7 +16,7 @@ from torch.distributed import init_process_group, destroy_process_group
 import os
 import warnings
 from data import *
-
+from model import Lion
 
 import gc
 from helper import *
@@ -177,14 +177,15 @@ def iterate(
     info = []
     # Loop over one epoch:
     for protein_pair in tqdm(dataset):  
-        #protein_pair.to(args['device'])
+
+            #protein_pair.to(args['device'])
        
         if not test:
             optimizer.zero_grad()
 
         P1_batch = protein_pair.to_dict(chain_idx=1)
         P2_batch = protein_pair.to_dict(chain_idx=2)
-
+   
         outputs = net(P1_batch, P2_batch)
         info_dict=dict(
                        {
@@ -230,11 +231,11 @@ def iterate(
             if isinstance(batch_ids, str):
                 info[-1]['PDB IDs']=[batch_ids]
                 save_protein_batch_single(
-                        batch_ids, P1_batch, save_path, pdb_idx=1
-                    )
+                            batch_ids, P1_batch, save_path, pdb_idx=1
+                        )
                 save_protein_batch_single(
-                        pdb_id, P2_batch, save_path, pdb_idx=2
-                    )
+                            pdb_id, P2_batch, save_path, pdb_idx=2
+                        )
             else:
                 info[-1]['PDB IDs']=batch_ids
                 for i, pdb_id in enumerate(batch_ids):
@@ -242,10 +243,10 @@ def iterate(
                     P2 = extract_single(P2_batch, i)
 
                     save_protein_batch_single(
-                        pdb_id, P1, save_path, pdb_idx=1
+                            pdb_id, P1, save_path, pdb_idx=1
                     )
                     save_protein_batch_single(
-                        pdb_id, P2, save_path, pdb_idx=2
+                            pdb_id, P2, save_path, pdb_idx=2
                     )
 
 
@@ -281,15 +282,22 @@ class Trainer:
         optimizer: torch.optim.Optimizer,
         gpu_id: int,
         args, 
-        best_loss = 1e10
+        best_loss = 1e10, 
+        ddp=True
     ) -> None:
         self.gpu_id = gpu_id
-        self.model = model.to(gpu_id)
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.test_loader = test_loader
-        self.optimizer = optimizer
-        self.model = DDP(model, device_ids=[gpu_id])
+        self.ddp=ddp
+        if ddp:
+            self.model = DDP(model, device_ids=[gpu_id])
+            self.optimizer = Lion(self.model.parameters(), lr=1e-4)
+            self.optimizer.load_state_dict(optimizer.state_dict())
+        else:
+            self.model = model.to(gpu_id)
+            self.optimizer = optimizer
+
         self.args = args
         self.args['device']=gpu_id
         self.best_loss = best_loss 
@@ -298,19 +306,15 @@ class Trainer:
     def _run_epoch(self, epoch):
 
         for dataset_type in ["Train", "Validation", "Test"]:
-            if dataset_type == "Train":
-                test = False
-            else:
-                test = True
 
-            suffix = dataset_type
             if dataset_type == "Train":
                 dataloader = self.train_loader
             elif dataset_type == "Validation":
                 dataloader = self.val_loader
             elif dataset_type == "Test":
                 dataloader = self.test_loader
-            dataloader.sampler.set_epoch(epoch)
+            if self.ddp:
+                dataloader.sampler.set_epoch(epoch)
 
             # Perform one pass through the data:
             info = iterate(
@@ -318,29 +322,44 @@ class Trainer:
                 dataloader,
                 self.optimizer,
                 self.args,
-                test=test,
+                test=(dataset_type!="Train"),
             )
     
             for key, val in info.items():
                 if key not in ['PDB IDs']:
-                    print(key ,suffix , epoch, np.nanmean(val))
+                    print(key ,dataset_type , epoch, np.nanmean(val))
     
             if dataset_type == "Validation":  # Store validation loss for saving the model
                 val_loss = np.nanmean(info["loss"])
         
-                if val_loss < self.best_loss and self.gpu_id==self.args['devices'][0]:
-                    print("## Validation loss {}, saving model".format(val_loss))
-                    torch.save(
-                        {
-                            "epoch": epoch,
-                            "model_state_dict": self.model.module.state_dict(),
-                            "optimizer_state_dict": self.optimizer.state_dict(),
-                            "best_loss": val_loss,
-                            "net_args": self.model.module.args
-                        },
-                        f"models/{self.args['experiment_name']}"
-                    )
-                    self.best_loss = val_loss
+                if self.ddp:
+                    if val_loss < self.best_loss and self.gpu_id==self.args['devices'][0]:
+                        print("## Validation loss {}, saving model".format(val_loss))
+                        torch.save(
+                            {
+                                "epoch": epoch,
+                                "model_state_dict": self.model.module.state_dict(),
+                                "optimizer_state_dict": self.optimizer.state_dict(),
+                                "best_loss": val_loss,
+                                "net_args": self.model.module.args
+                            },
+                            f"models/{self.args['experiment_name']}"
+                        )
+                        self.best_loss = val_loss
+                else:
+                    if val_loss < self.best_loss:
+                        print("## Validation loss {}, saving model".format(val_loss))
+                        torch.save(
+                            {
+                                "epoch": epoch,
+                                "model_state_dict": self.model.state_dict(),
+                                "optimizer_state_dict": self.optimizer.state_dict(),
+                                "best_loss": val_loss,
+                                "net_args": self.model.args
+                            },
+                            f"models/{self.args['experiment_name']}"
+                        )
+                        self.best_loss = val_loss
 
 
     def train(self, starting_epoch: int):
@@ -351,25 +370,35 @@ class Trainer:
             self._run_epoch(i)
             
 
-def train(rank: int, rank_list: int, args, dataset, net, optimizer, starting_epoch, best_loss, port=12355):
+def train(rank: int, rank_list, args, dataset, net, optimizer, starting_epoch, best_loss, port=12355, ddp=True):
 
     warnings.simplefilter("ignore")
-    ddp_setup(rank, rank_list, port=port)
+    if ddp:
+        ddp_setup(rank, rank_list, port=port)
 
-    batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2", 'sequence_p1','sequence_p2']
+    batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2"]
 
-    train_loader = DataLoader(
-        dataset[0], batch_size=args['batch_size'], collate_fn=CollateData(batch_vars),
-        shuffle=False, sampler=DistributedSampler(dataset[0]))
-    val_loader = DataLoader(
-        dataset[1], batch_size=args['batch_size'], collate_fn=CollateData(batch_vars),
-        shuffle=False, sampler=DistributedSampler(dataset[1]))
-    test_loader = DataLoader(
-        dataset[2], batch_size=1, collate_fn=CollateData(batch_vars),
-        shuffle=False, sampler=DistributedSampler(dataset[2]))
+    if ddp:
+        train_loader = DataLoader(
+            dataset[0], batch_size=args['batch_size'], collate_fn=CollateData(batch_vars),
+            shuffle=False, sampler=DistributedSampler(dataset[0], rank=rank, num_replicas=len(rank_list)))
+        val_loader = DataLoader(
+            dataset[1], batch_size=args['batch_size'], collate_fn=CollateData(batch_vars),
+            shuffle=False, sampler=DistributedSampler(dataset[1], rank=rank, num_replicas=len(rank_list)))
+        test_loader = DataLoader(
+            dataset[2], batch_size=1, collate_fn=CollateData(batch_vars),
+            shuffle=False, sampler=DistributedSampler(dataset[2], rank=rank, num_replicas=len(rank_list)))
+    else:
+        train_loader = DataLoader(
+            dataset[0], batch_size=args['batch_size'], collate_fn=CollateData(batch_vars),
+            shuffle=True)
+        val_loader = DataLoader(
+            dataset[1], batch_size=args['batch_size'], collate_fn=CollateData(batch_vars),
+            shuffle=False)
+        test_loader = DataLoader(
+            dataset[2], batch_size=1, collate_fn=CollateData(batch_vars),
+            shuffle=False)
 
-
-    gc.collect()    
     trainer = Trainer(model=net,
                       train_loader=train_loader,
                       val_loader=val_loader,
@@ -377,10 +406,11 @@ def train(rank: int, rank_list: int, args, dataset, net, optimizer, starting_epo
                       optimizer=optimizer,
                       gpu_id=rank_list[rank],
                       args=args,
-                      best_loss=best_loss)
+                      best_loss=best_loss, ddp=ddp)
     trainer.train(starting_epoch)
 
-    destroy_process_group()
+    if ddp:
+        destroy_process_group()
 
 # these 2 classes are to replace corresponding classes from pyg
 class CollateData:

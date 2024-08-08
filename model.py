@@ -6,15 +6,22 @@ import torch.nn.functional as F
 import torch.autograd.profiler as profiler
 from pykeops.torch import LazyTensor
 
-from .geometry_processing import (
-    curvatures,
-    atoms_to_points_normals,
-)
-from .helper import *
-from .geometry_processing import dMaSIFConv_seg
-
-# create Adam optimizer class from https://github.com/lucidrains/lion-pytorch
-
+try:
+    from geometry_processing import (
+        curvatures,
+        atoms_to_points_normals,
+        dMaSIFConv_seg
+    )
+    from helper import *
+except ModuleNotFoundError:
+    from .geometry_processing import (
+        curvatures,
+        atoms_to_points_normals,
+        dMaSIFConv_seg
+    )
+    from .helper import *
+    
+# create Lion optimizer class from https://github.com/lucidrains/lion-pytorch
 
 from typing import Tuple, Optional, Callable
 
@@ -64,7 +71,7 @@ class Lion(Optimizer):
                 # init state - exponential moving average of gradient values
 
                 if len(state) == 0:
-                    state['exp_avg'] = torch.zeros_like(p, device=p.device)
+                    state['exp_avg'] = torch.zeros_like(p)
 
                 exp_avg = state['exp_avg']
 
@@ -315,7 +322,7 @@ class AtomNet(nn.Module):
         )
         self.embed = Atom_embedding(args)
 
-    def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch):
+    def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch, atom_weights):
         # Run a DGCNN on the available information:
         atomtypes=atomtypes[:,:self.atom_dims]
         atomtypes = self.transform_types(atomtypes)
@@ -424,7 +431,7 @@ class AtomNet_MP(nn.Module):
         self.embed = Atom_embedding_MP(args)
         self.atom_atom = Atom_Atom_embedding_MP(args)
 
-    def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch):
+    def forward(self, xyz, atom_xyz, atomtypes, batch, atom_batch, atom_weights):
         # Run a DGCNN on the available information:
         atomtypes=atomtypes[:,:self.atom_dims]
         atomtypes = self.transform_types(atomtypes)

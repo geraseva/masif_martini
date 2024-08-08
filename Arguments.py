@@ -5,7 +5,7 @@ num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
         'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
         'UNK','MAS'] # from https://github.com/baker-laboratory/rf_diffusion_all_atom/blob/main/chemical.py
         
-from .martinize import pseudoatom_radii, pseudoatom_weights, list_pseudo
+from martinize import pseudoatom_radii, pseudoatom_weights, list_pseudo
 
 net_parser = argparse.ArgumentParser(description="Network parameters", add_help=False,usage='')
 
@@ -111,8 +111,6 @@ net_parser.add_argument('--split', default=True,
 net_parser.add_argument("--dropout", type=float, default=0.0,
     help="Amount of Dropout for the input features"
 )
-net_parser.add_argument('--encoders', type=json.loads, 
-    help='How to encode atom labels', default={})
 
 train_inf_parser=argparse.ArgumentParser(add_help=False)
 
@@ -202,12 +200,6 @@ train_parser.add_argument(
     type=str,
     default="",
     help="Which model to restart the training from",
-)
-train_parser.add_argument(
-    "--transfer_learning",
-    type=str,
-    default="",
-    help="Which model to use for parameters transfer",
 )
 train_parser.add_argument(
     "--validation_fraction",
@@ -324,9 +316,7 @@ def parse_train():
                 net_args.atom_dims=12
             else:
                 net_args.atom_dims=max(args.encoders['atom_types'][0]['encoder'].values())+1
-
-        if net_args.encoders=={}:
-            net_args.encoders=args.encoders
+                
         if net_args.distance==None:
             if args.no_h:
                 net_args.distance=1.25

@@ -17,7 +17,6 @@ if __name__ == "__main__":
     from model import dMaSIF, Lion
     from data_iteration import train, iterate, CollateData, Compose
     from martinize import ReshapeBB, BB2Martini
-
     if args['mode']=='train':
 
         import time
@@ -27,8 +26,14 @@ if __name__ == "__main__":
         rank_list=[x for x in args['devices'] if x!='cpu']
         args['devices']=rank_list
 
-        print('## World size:',len(rank_list))
-    
+        if len(rank_list)>1:
+            print('## Using devices:' ,', '.join(rank_list))
+            print('## Using DDP')
+            ddp=True
+        else:
+            print('## Using device:' ,', '.join(rank_list))  
+            ddp=False 
+
         if args['restart_training'] != "":
             checkpoint = torch.load("models/" + args['restart_training'], map_location=args['devices'][0])
             net=dMaSIF(checkpoint['net_args'])
@@ -45,15 +50,6 @@ if __name__ == "__main__":
             starting_epoch = 0
             best_loss = 1e10 
         
-        if args['transfer_learning'] != "":
-            checkpoint = torch.load("models/" + args['transfer_learning'], map_location=args['devices'][0])
-            for module in checkpoint["model_state_dict"]:
-                try:
-                    net[module].load_state_dict(checkpoint["model_state_dict"][module])
-                    print('Loaded precomputed module',module)
-                except:
-                    pass 
-
         print('# Model loaded')
         print('## Model arguments:',net_args)
 
@@ -65,7 +61,8 @@ if __name__ == "__main__":
         )
     
         pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
-                             GenerateMatchingLabels(args['threshold'])]
+                             GenerateMatchingLabels(args['threshold']),
+                             RemoveUnusedKeys(keys=['sequence', 'bb_xyz'])]
         if args['from_bb']:
             pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
 
@@ -104,9 +101,12 @@ if __name__ == "__main__":
             Path("models/").mkdir(exist_ok=False)
    
         fulltime=time.time()
-        mp.spawn(train, args=(rank_list, args, (train_dataset,val_dataset,test_dataset), net, optimizer, 
+        if ddp:
+            mp.spawn(train, args=(rank_list, args, (train_dataset,val_dataset,test_dataset), net, optimizer, 
                               starting_epoch, best_loss, args['port']), nprocs=len(rank_list))
-
+        else:
+            train(0, rank_list, args, (train_dataset,val_dataset,test_dataset), net, optimizer, 
+                              starting_epoch, best_loss, args['port'], ddp=False)
         fulltime=time.time()-fulltime
         print(f'## Execution complete {fulltime} seconds')
     else:
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         print('# Model loaded')
         print('## Model arguments:',checkpoint['net_args'])
 
-        batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2", 'sequence_p1','sequence_p2']
+        batch_vars = ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2"]
 
         transformations = (
             Compose([CenterPairAtoms(as_single=True), 
@@ -134,7 +134,8 @@ if __name__ == "__main__":
         )
 
         pre_transformations=[SurfacePrecompute(net.preprocess_surface, False),
-                                     GenerateMatchingLabels(args['threshold'])]
+                                     GenerateMatchingLabels(args['threshold']),
+                                     RemoveUnusedKeys(keys=['sequence', 'bb_xyz'])]
         if args['from_bb']:
             pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
         pre_transformations=Compose(pre_transformations)

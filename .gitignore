@@ -1,9 +1,9 @@
-npys/
 datasets/
 runs/
 obsolete/
 surface_data/
 preds/
+logs/
 __pycache__/
 .*/
 *.csv
@@ -13,8 +13,3 @@ __pycache__/
 *.cif
 *.log
 log*.txt
-Untitled1.ipynb
-data_preprocessing/npys/
-data_preprocessing/__pycache__/
-
-
