@@ -25,6 +25,26 @@ renumber_aa=torch.tensor([restype_str_to_int[restype_3to1.get(x,'X')] for x in n
 
 path_to_LigandMPNN='/home/domain/data/geraseva/LigandMPNN'
 
+
+def get_O_from_3_points(xyz, bond=1.24, eps=1e-8):
+   
+    N=xyz[:,0,:]
+    CA=xyz[:,1,:]
+    C=xyz[:,2,:]
+
+    N=torch.cat((N[1:,:],N[:1,:]), dim=0)
+
+    v=((C-CA)/(torch.norm(C-CA, dim=-1, keepdim=True)+eps) +
+       (C-N)/(torch.norm(C-N, dim=-1, keepdim=True)+eps))
+
+    O=C+v/(torch.norm(v, dim=-1, keepdim=True)+eps)*bond
+
+    xyz_out=torch.zeros_like(xyz)
+    xyz_out[:,:3,:]=xyz[:,:3,:]
+    xyz_out[:,3,:]=O
+
+    return xyz_out
+
 class Potential_from_bb:
 
     def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, threshold=3, seq_model_type='protein_mpnn'):
@@ -68,7 +88,7 @@ class Potential_from_bb:
         self.recover_sc=None
 
         # Initialize dMaSIF
-        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb_nnthr'
+        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb_no_v'
         surf_checkpoint=torch.load(checkpoint_path, map_location=self.device)
         self.surf_model=dMaSIF(surf_checkpoint['net_args'])
         self.surf_model.load_state_dict(surf_checkpoint["model_state_dict"])
@@ -85,9 +105,11 @@ class Potential_from_bb:
 
         L=xyz.shape[0]
 
+        xyz=get_O_from_3_points(xyz)
+
         feature_dict = {}
         feature_dict["batch_size"]=1
-        feature_dict["S"] = torch.zeros((1, L)).to(self.device)# encoded sequence
+        feature_dict["S"] = torch.full((1, L),20,dtype=int).to(self.device)# encoded sequence
     
         feature_dict["X"] = xyz[None,:,:4,:] # B*L*4*3 (bb atoms)  ? normalize
 
@@ -110,15 +132,15 @@ class Potential_from_bb:
         else:
             feature_dict["chain_labels"]=torch.zeros((1,L)).to(self.device)
     
-        output_dict = self.seq_model.sample(feature_dict)
+        output_dict = self.seq_model.score(feature_dict, use_sequence=False)
 
         return output_dict
 
     def get_aa_probs(self, xyz):
 
         output_dict=self.run_LigandMPNN(xyz)
-        probs=torch.cat((output_dict['sampling_probs'],
-                         torch.zeros_like(output_dict['sampling_probs'])),-1) 
+        probs=torch.cat((torch.nn.functional.softmax(output_dict['logits'], dim=-1),
+                         torch.zeros_like(output_dict['logits'])),-1) 
 
         return probs[0,:,renumber_aa].contiguous()
 
@@ -171,7 +193,7 @@ class Potential_from_bb:
             P2['labels'] = (xyz_dists.sum(0) > 1.0).view(-1).detach()
 
             pos_xyz1 = P1['xyz'][P1['labels']==1]
-            pos_xyz2 = P1['xyz'][P1['labels']==1]
+            pos_xyz2 = P2['xyz'][P2['labels']==1]
 
             pos_xyz_dists = (
                 ((pos_xyz1[:, None, :] - pos_xyz2[None, :, :]) ** 2).sum(-1)
@@ -206,13 +228,13 @@ class Potential_from_bb:
             
             if self.non_int_weight>0:
                        
-                neg_preds1=P1['preds'][P1['labels']==0]
-                if neg_preds1.shape[0]>0:
+                if (P1['labels']==0).sum()>0:
+                    neg_preds1=P1['preds'][P1['labels']==0]
                     neg_labels1=torch.zeros_like(neg_preds1)
                     loss+=lf(neg_preds1, neg_labels1, reduction='mean')*self.non_int_weight
 
-                neg_preds2=P2['preds'][P2['labels']==0]
-                if neg_preds2.shape[0]>0:
+                if (P2['labels']==0).sum()>0:
+                    neg_preds2=P2['preds'][P2['labels']==0]
                     neg_labels2=torch.zeros_like(neg_preds2)
                     loss+=lf(neg_preds2, neg_labels2, reduction='mean')*self.non_int_weight
 

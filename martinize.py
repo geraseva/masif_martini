@@ -185,6 +185,7 @@ def rigid_from_3_points(N, Ca, C, non_ideal=False, eps=1e-8):
     return R, Ca # from https://github.com/baker-laboratory/rf_diffusion_all_atom/blob/main/util.py
 
 
+
 class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
     def __init__(self, chains=['_p1','_p2']):
 
