@@ -5,6 +5,7 @@ import os
 
 from pykeops.torch import LazyTensor
 
+import LigandMPNN
 from LigandMPNN.model_utils import ProteinMPNN
 from LigandMPNN.data_utils import restype_str_to_int, restype_1to3, restype_int_to_str
 
@@ -23,7 +24,7 @@ num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
 restype_3to1={restype_1to3[x]: x for x in restype_1to3.keys()}
 renumber_aa=torch.tensor([restype_str_to_int[restype_3to1.get(x,'X')] for x in num2aa], dtype=int)
 
-path_to_LigandMPNN='/home/domain/data/geraseva/LigandMPNN'
+path_to_LigandMPNN=LigandMPNN.__path__._path[0]
 
 
 def get_O_from_3_points(xyz, bond=1.24, eps=1e-8):
@@ -47,7 +48,7 @@ def get_O_from_3_points(xyz, bond=1.24, eps=1e-8):
 
 class Potential_from_bb:
 
-    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, threshold=3, seq_model_type='protein_mpnn'):
+    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, threshold=3, seq_model_type='ligand_mpnn'):
 
         torch.autograd.set_detect_anomaly(True)
 
@@ -259,6 +260,8 @@ class Potential_from_bb:
         P1, P2=self.gen_labels(d)
 
         loss=self.calc_loss(P1, P2)
+
+        print('DMASIF LOSS:',loss)
 
         return loss
 
