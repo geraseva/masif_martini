@@ -265,8 +265,8 @@ class BB2MartiniModule(nn.Module, BB2Martini):
     
     def __init__(self, chains=['_p1','_p2']):
 
-        super(nn.Module, self).__init__()
-        super(BB2Martini,self).__init__(chains)
+        nn.Module.__init__(self)
+        BB2Martini.__init__(self,chains)
 
         self.map_coords=nn.Parameter(self.map_coords)
         self.map_types=nn.Parameter(self.map_types)

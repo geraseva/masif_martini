@@ -13,7 +13,7 @@ try:
     from martinize import BB2Martini
     from model import dMaSIF
 except ModuleNotFoundError:
-    from .martinize import BB2Martini
+    from .martinize import BB2MartiniModule #BB2Martini
     from .model import dMaSIF    
 
 
@@ -89,7 +89,7 @@ class Potential_from_bb:
         self.recover_sc=None
 
         # Initialize dMaSIF
-        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb_no_v'
+        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb'
         surf_checkpoint=torch.load(checkpoint_path, map_location=self.device)
         self.surf_model=dMaSIF(surf_checkpoint['net_args'])
         self.surf_model.load_state_dict(surf_checkpoint["model_state_dict"])
@@ -99,7 +99,10 @@ class Potential_from_bb:
 
     def init_recover_sc(self):
         # Initialize BB2Martini
-        self.recover_sc=BB2Martini(chains= ['_p1'] if self.binderlen<0 else ['_p1','_p2'])
+        
+        #self.recover_sc=BB2Martini(chains= ['_p1'] if self.binderlen<0 else ['_p1','_p2'])
+        self.recover_sc=BB2MartiniModule(chains= ['_p1'] if self.binderlen<0 else ['_p1','_p2'])
+        self.recover_sc.eval()
 
 
     def run_LigandMPNN(self, xyz):
