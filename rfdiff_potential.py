@@ -89,7 +89,7 @@ class Potential_from_bb:
         self.recover_sc=None
 
         # Initialize dMaSIF
-        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb'
+        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb_no_v'
         surf_checkpoint=torch.load(checkpoint_path, map_location=self.device)
         self.surf_model=dMaSIF(surf_checkpoint['net_args'])
         self.surf_model.load_state_dict(surf_checkpoint["model_state_dict"])
@@ -211,10 +211,11 @@ class Potential_from_bb:
 
     def calc_loss(self, P1, P2, lf=F.binary_cross_entropy_with_logits):
 
+        binary_loss=0
+        complementary_loss=0
         if self.binderlen<0:
-            loss= lf(P1['preds'], P1['labels'], reduction='mean')
+            binary_loss+= lf(P1['preds'], P1['labels'], reduction='mean')
         else:
-            loss=0
             if P1["edge_labels"].shape[0]>0 and self.int_weight>0:
 
                 pos_descs1 = P1["embedding_1"][P1["edge_labels"],:]
@@ -228,21 +229,21 @@ class Potential_from_bb:
                 pos_preds = torch.cat([pos_preds, pos_preds2], dim=0)
                 pos_labels = torch.ones_like(pos_preds)
 
-                loss+=lf(pos_preds, pos_labels, reduction='mean')*self.int_weight
+                complementary_loss+=lf(pos_preds, pos_labels, reduction='mean')*self.int_weight
             
             if self.non_int_weight>0:
                        
                 if (P1['labels']==0).sum()>0:
                     neg_preds1=P1['preds'][P1['labels']==0]
                     neg_labels1=torch.zeros_like(neg_preds1)
-                    loss+=lf(neg_preds1, neg_labels1, reduction='mean')*self.non_int_weight
+                    binary_loss+=lf(neg_preds1, neg_labels1, reduction='mean')*self.non_int_weight
 
                 if (P2['labels']==0).sum()>0:
                     neg_preds2=P2['preds'][P2['labels']==0]
                     neg_labels2=torch.zeros_like(neg_preds2)
-                    loss+=lf(neg_preds2, neg_labels2, reduction='mean')*self.non_int_weight
+                    binary_loss+=lf(neg_preds2, neg_labels2, reduction='mean')*self.non_int_weight
 
-        return loss
+        return binary_loss, complementary_loss
 
     def __call__(self, xyz):
 
@@ -262,11 +263,13 @@ class Potential_from_bb:
 
         P1, P2=self.gen_labels(d)
 
-        loss=self.calc_loss(P1, P2)
+        binary_loss, complementary_loss=self.calc_loss(P1, P2)
 
-        print('DMASIF LOSS:',loss)
+        print('DMASIF BINARY LOSS:',binary_loss)
+        print('DMASIF COMPLEMENTARY LOSS:',complementary_loss)
 
-        return loss
+
+        return binary_loss+complementary_loss
 
 
 if __name__ == "__main__":
