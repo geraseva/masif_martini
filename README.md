@@ -1,8 +1,10 @@
 # Masif martini
 
-A model based on dmasif (https://github.com/FreyrS/dMaSIF) framework to analyze macromolecular interactions.
-It was trained on heavy atoms, martini (https://cgmartini.nl/) pseudoatoms, 
-or martini pseudoatoms recovered from backbone atoms as most common rotamers.
+A model based on [dmasif](https://github.com/FreyrS/dMaSIF) framework to analyze macromolecular interactions.
+It was trained on heavy atoms, [martini](https://cgmartini.nl/) pseudoatoms, 
+or martini pseudoatoms recovered from backbone atoms as most common rotamers. 
+The last can be used as an auxiliary potential in [RFdiffusion](https://github.com/RosettaCommons/RFdiffusion). 
+More about this project in https://github.com/geraseva/auxiliary_potential
 
 ## Installation
 
