@@ -121,7 +121,7 @@ def get_atom_features(x, y, x_batch, y_batch, y_atomtype, k=16):
 
     return feature
 
-def get_features_v(x, y, x_batch, y_batch, y_atomtype, y_atom_weights=None, k=16, gamma=1, threshold=None):
+def get_features_v(x, y, x_batch, y_batch, y_atomtype, y_atom_weights=None, k=16, gamma=1, alpha=1e-8, threshold=None):
 
     N, D = x.shape
     x_i = LazyTensor(x[:, None, :])
@@ -145,9 +145,9 @@ def get_features_v(x, y, x_batch, y_batch, y_atomtype, y_atom_weights=None, k=16
 
     if threshold!=None:
         mask*=(dists<=threshold**2)
-        mask*=(dists>=1/2**2)
+        mask*=(dists>=alpha)
 
-    dists = torch.pow(dists+1e-8,-(1+gamma)/2) # (N, K)
+    dists = torch.pow(dists+alpha,-(1+gamma)/2) # (N, K)
     
     _, num_dims = y_atomtype.size()
 

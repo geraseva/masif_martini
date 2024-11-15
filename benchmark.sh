@@ -4,7 +4,7 @@ python3 train_inf.py train -e full_prot --na protein --n_epochs 50 --port 12356 
 
 python3 train_inf.py train -e no_h_prot --na protein --no_h  --n_epochs 50 --port 12356 --device cuda:0 >> logs/log.txt
 
-python3 train_inf.py train -e martini_prot --na protein --martini  --n_epochs 50 --port 12356 --device cuda:03 >> logs/log.txt
+python3 train_inf.py train -e martini_prot --na protein --martini  --n_epochs 50 --port 12356 --device cuda:0 >> logs/log.txt
 
 python3 train_inf.py train -e martini_prot_from_bb --na protein --from_bb --n_epochs 50 --port 12356 --device cuda:0 >> logs/log.txt
 

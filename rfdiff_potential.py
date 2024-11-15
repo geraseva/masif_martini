@@ -89,7 +89,7 @@ class Potential_from_bb:
         self.recover_sc=None
 
         # Initialize dMaSIF
-        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb_no_v'
+        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb'
         surf_checkpoint=torch.load(checkpoint_path, map_location=self.device)
         self.surf_model=dMaSIF(surf_checkpoint['net_args'])
         self.surf_model.load_state_dict(surf_checkpoint["model_state_dict"])

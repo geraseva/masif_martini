@@ -234,7 +234,7 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
         self.map_weights=tensor(ws)[None,:,:,None] # (1,A,P,1)
         self.map_radii=tensor(rs)[None,:,:,None] # (1,A,P,1)
     
-        
+    @torch.no_grad()       
     def __call__(self, data):
         
         for ch in self.chains: 
@@ -268,10 +268,10 @@ class BB2MartiniModule(nn.Module, BB2Martini):
         nn.Module.__init__(self)
         BB2Martini.__init__(self,chains)
 
-        self.map_coords=nn.Parameter(self.map_coords)
-        self.map_types=nn.Parameter(self.map_types)
-        self.map_weights=nn.Parameter(self.map_weights)
-        self.map_radii=nn.Parameter(self.map_radii)
+        self.map_coords=nn.Parameter(self.map_coords, requires_grad=False)
+        self.map_types=nn.Parameter(self.map_types, requires_grad=False)
+        self.map_weights=nn.Parameter(self.map_weights, requires_grad=False)
+        self.map_radii=nn.Parameter(self.map_radii, requires_grad=False)
 
     def forward(self, data):
 
@@ -299,15 +299,14 @@ class BB2MartiniModule(nn.Module, BB2Martini):
 
         return data 
 
-# Это еще надо наверное завернуть в torch Module и прописать форвард и что-то там еще, потом разберусь
-
 
 class ReshapeBB: # то сut backbone atoms from the protein
 
     def __init__(self,encoder={'N': 0, 'CA': 1, 'C': 2}, chains=['_p1','_p2']):
         self.encoder=encoder
         self.chains=chains
-
+    
+    @torch.no_grad()
     def __call__(self,data):
 
         for ch in self.chains:                      

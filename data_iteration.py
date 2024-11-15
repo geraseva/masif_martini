@@ -220,9 +220,9 @@ def iterate(
             optimizer.step()   
 
         if bsampled_labels is not None and bsampled_labels.shape[0]>0:
-            info_dict["binary_AUROC"]=binary_auroc(bsampled_preds.view(-1),bsampled_labels.view(-1)).item()
+            info_dict["binary_AUROC"]=binary_auroc(bsampled_preds.view(-1),bsampled_labels.view(-1)).detach().item()
         if csampled_labels is not None and csampled_labels.shape[0]>0:
-            info_dict["complementary_AUROC"]=binary_auroc(csampled_preds.view(-1),csampled_labels.view(-1)).item()
+            info_dict["complementary_AUROC"]=binary_auroc(csampled_preds.view(-1),csampled_labels.view(-1)).detach().item()
 
         info.append(info_dict)
 

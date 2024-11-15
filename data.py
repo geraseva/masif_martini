@@ -4,6 +4,7 @@ from torch.utils.data import Dataset
 import numpy as np
 from scipy.spatial.transform import Rotation
 from tqdm import tqdm
+import copy
 from pathlib import Path
 import Bio
 from Bio.PDB import * 
@@ -257,7 +258,7 @@ class PairData:
     
     def detach(self):
         for key in self.keys:
-            self._storage[key].detach()
+            self._storage[key]=self._storage[key].detach()
         return self
             
     def contiguous(self):
@@ -397,7 +398,7 @@ class NpiDataset(Dataset):
 
     def __getitem__(self, idx):
         
-        sample=self.data[idx]
+        sample=copy.deepcopy(self.data[idx].detach())
 
         if self.transform:
             sample = self.transform(sample)
@@ -428,6 +429,7 @@ class SurfacePrecompute(object):
         return "{}()".format(self.__class__.__name__)
 
 
+@torch.no_grad()       
 def get_threshold_labels(queries,batch_queries,source,batch_source,labels, threshold, source_rad=0):
 
     x_i = LazyTensor(queries[:, None, :])  # (N, 1, D)
@@ -453,6 +455,7 @@ class LabelsFromAtoms(object):
         self.threshold=threshold
         self.single=single_protein
 
+    @torch.no_grad()       
     def __call__(self, protein_pair):
 
         if protein_pair['atom_xyz_p2'].shape[0]==0:
@@ -495,6 +498,7 @@ class GenerateMatchingLabels(object):
 
         self.threshold=threshold
 
+    @torch.no_grad()       
     def __call__(self, protein_pair):
 
         xyz1_i = protein_pair['xyz_p1']
@@ -629,7 +633,7 @@ class CenterPairAtoms(object):
     def __repr__(self):
         return "{}()".format(self.__class__.__name__)
 
-
+@torch.no_grad()       
 def iface_valid_filter(protein_pair):
     labels1 = protein_pair['labels_p1'].reshape(-1)>0
     valid1 = (
