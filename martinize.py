@@ -14,11 +14,12 @@ try:
     with open(os.path.dirname(os.path.abspath(__file__))+'/datasets/ideal_coords.pkl', 'rb') as f:
         ideal_coords = pickle.load(f)
 except FileNotFoundError:
-    from .prepare_rotamers import ideal_coords
+    from .prepare_rotamers import ideal_coords, ideal_coords_na
 
 num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
         'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
         'UNK','MAS']
+num2na=['DA','DC','DG','DT','A','C','G','U']
 
 def nsplit(*x):
     return [i.split() for i in x]
@@ -52,15 +53,58 @@ mapping = {
         "VAL":  nsplit(bb, "CB CG1 CG2"),
         "TRP":  nsplit(bb, "CB CG CD2", "CD1 HD1 NE1 HE1 CE2", "CE3 HE3 CZ3 HZ3", "CZ2 HZ2 CH2 HH2"),
         "TYR":  nsplit(bb, "CB CG CD1 HD1", "CD2 HD2 CE2 HE2", "CE1 HE1 CZ OH HH"),
-        "DA": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1'", "N9 C4", "C8 N7 C5", "C6 N6 N1", "C2 N3"),
-        "DG": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1'", "N9 C4", "C8 N7 C5", "C6 O6 N1", "C2 N2 N3"),
-        "DC": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1'", "N1 C6", "C5 C4 N4", "N3 C2 O2"),
-        "DT": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1'", "N1 C6", "C5 C4 O4 C7 C5M", "N3 C2 O2"),
-        "A": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1', O2'", "N9 C4", "C8 N7 C5", "C6 N6 N1", "C2 N3"),
-        "G": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1', O2'", "N9 C4", "C8 N7 C5", "C6 O6 N1", "C2 N2 N3"),
-        "C": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1', O2'", "N1 C6", "C5 C4 N4", "N3 C2 O2"),
-        "T": nsplit("P OP1 OP2 O5' O3' O1P O2P", "C5' O4' C4'", "C3' C2' C1', O2'", "N1 C6", "C5 C4 O4 C7 C5M", "N3 C2 O2"),
-} # from https://github.com/cgmartini/martinize.py/
+        "DA": nsplit("N9 C4",     
+                     "C8 N7 C5",
+                     "P OP1 OP2 O5' H5T O3' H3T O1P O2P",
+                     "C5' O4' C4'",
+                     "C3' C2' C1'",
+                     "C2 N3",
+                     "C6 N6 N1"),
+        "DG": nsplit("N9 C4",
+                     "C8 N7 C5",
+                     "P OP1 OP2 O5' H5T O3' H3T O1P O2P",
+                     "C5' O4' C4'",
+                     "C3' C2' C1'",
+                     "C2 N2 N3",
+                     "C6 O6 N1"),
+        "DC": nsplit("N1 C6",
+                     "P OP1 OP2 O5' H5T O3' H3T O1P O2P",
+                     "C5' O4' C4'",
+                     "C3' C2' C1'",
+                     "N3 C2 O2",
+                     "C5 C4 N4"),
+        "DT": nsplit("N1 C6",
+                     "P OP1 OP2 O5' H5T O3' H3T O1P O2P",
+                     "C5' O4' C4'",
+                     "C3' C2' C1'",   
+                     "N3 C2 O2",
+                     "C5 C4 O4 C7 C5M"),
+        "A":  nsplit("N9 C4",
+                     "C8 N7 C5",
+                     "P OP1 OP2 O5' H5T O3' H3T O1P O2P",
+                     "C5' O4' C4'",
+                     "C3' C2' O2' C1'", 
+                     "C2 N3",
+                     "C6 N6 N1"),
+        "G":  nsplit("N9 C4",
+                     "C8 N7 C5",
+                     "P OP1 OP2 O5' H5T O3' H3T O1P O2P",
+                     "C5' O4' C4'",
+                     "C3' C2' O2' C1'", 
+                     "C2 N2 N3",
+                     "C6 O6 N1"),
+        "C":  nsplit("N1 C6",
+                     "P OP1 OP2 O5' H5T O3' H3T O1P O2P",
+                     "C5' O4' C4'",
+                     "C3' C2' O2' C1'",
+                     "N3 C2 O2",
+                     "C5 C4 N4"),
+        "U":  nsplit("N1 C6",
+                     "P OP1 OP2 O5' H5T O3' H3T O1P O2P",
+                     "C5' O4' C4'",
+                     "C3' C2' O2' C1'",
+                     "N3 C2 O2",
+                     "C5 C4 O4 C7 C5M")} 
 
 pseudoatom_types = {
         "ALA":  ['P4'],
@@ -88,48 +132,33 @@ pseudoatom_types = {
         "VAL":  ['P5','AC2'],
         "TRP":  ['P5','SC4','SP1','SC4','SC4'],
         "TYR":  ['P5','SC4','SC4','SP1'],
-        "DA": ["Q0","SN0","SC2", "TN0", "TA2", "TA3", "TNa"],
-        "DG": ["Q0","SN0","SC2", "TN0", "TG2", "TG3", "TNa"],
-        "DC": ["Q0","SN0","SC2", "TN0", "TY2", "TY3"],
-        "DT": ["Q0","SN0","SC2", "TN0", "TT2", "TT3"],
-        "A": ["Q0","SN0","SNda", "TN0", "TA2", "TA3", "TNa"],
-        "G": ["Q0","SN0","SNda", "TN0", "TG2", "TG3", "TNa"],
-        "C": ["Q0","SN0","SNda", "TN0", "TY2", "TY3"],
-        "U": ["Q0","SN0","SNda", "TN0", "TT2", "TT3"],
-} # from http://www.cgmartini.nl/images/parameters/ITP/martini_v2.1_aminoacids.itp
-
+        "DA": ["TN0", "TNa", "Q0", "SN0","SC2", "TA2", "TA3"],
+        "DG": ["TN0", "TNa", "Q0","SN0","SC2", "TG2", "TG3"],
+        "DC": ["TN0", "Q0","SN0","SC2", "TY2", "TY3"],
+        "DT": ["TN0", "Q0","SN0","SC2", "TT2", "TT3"],
+        "A": ["TN0", "TNa", "Q0","SN0","SNda", "TA2", "TA3"],
+        "G": ["TN0", "TNa", "Q0","SN0","SNda", "TG2", "TG3"],
+        "C": ["TN0", "Q0","SN0","SNda", "TY2", "TY3"],
+        "U": ["TN0", "Q0","SN0","SNda", "TT2", "TT3"],
+} # from martini_v2.1
 
 pseudoatom_radii = {
-    'P5': 0.47*10, 
-    'AC1': 0.47*10,
-    'C5': 0.47*10,
-    'SP1': 0.43*10, 
-    'N0': 0.47*10, 
-    'AC2': 0.47*10,
-    'C3': 0.47*10,
-    'P1': 0.47*10,
-    'Qa': 0.47*10,
-    'P4': 0.47*10,
-    'Qd': 0.47*10, 
-    'SC4': 0.43*10
-} # from http://www.cgmartini.nl/images/parameters/ITP/martini_v2.0.itp
+    'P5': 4.7, 'AC1': 4.7,'C5': 4.7, 'SP1': 4.7, 
+    'N0': 4.7, 'AC2': 4.7,'C3': 4.7, 'P1': 4.7,
+    'Qa': 4.7, 'P4': 4.7,'Qd': 4.7, 'SC4': 4.7,
+    "Q0": 4.7, "SN0": 4.3, "SC2": 4.3, "SNda": 4.3, 
+    "TN0": 3.2, "TA2": 3.2, "TA3": 3.2, "TG2": 3.2, "TG3": 3.2, 
+    "TY2": 3.2, "TY3": 3.2, "TT2": 3.2, "TT3": 3.2, "TNa": 3.2    
+} # from martini_v2.1
 
 pseudoatom_weights = {
-    'P5': 72.0,
-    'AC1': 72.0,
-    'C5': 72.0,
-    'SP1': 72.0, 
-    'N0': 72.0, 
-    'AC2': 72.0,
-    'C3': 72.0,
-    'P1': 72.0,
-    'Qa': 72.0,
-    'P4': 72.0,
-    'Qd': 72.0, 
-    'SC4': 72.0
-} # from http://www.cgmartini.nl/images/parameters/ITP/martini_v2.0.itp
-
-list_pseudo=list(pseudoatom_radii.keys())
+    'P5': 72.0, 'AC1': 72.0, 'C5': 72.0, 'SP1': 45.0, 
+    'N0': 72.0, 'AC2': 72.0, 'C3': 72.0, 'P1': 72.0,
+    'Qa': 72.0, 'P4': 72.0, 'Qd': 72.0, 'SC4': 45.0, 
+    "Q0": 72.0, "SN0": 45.0, "SC2": 45.0, "SNda": 45.0, 
+    "TN0": 45.0, "TA2": 45.0, "TA3": 45.0, "TG2": 45.0, "TG3": 45.0, 
+    "TY2": 45.0, "TY3": 45.0, "TT2": 45.0, "TT3": 45.0, "TNa": 45.0
+} # from martini_v2.1
 
 def martinize(seq, atoms, coords):
     ps_coords=[]
@@ -152,7 +181,12 @@ def martinize(seq, atoms, coords):
         ps_types.append(pseudoatom_types[aa][:len(av)])
     return ps_coords, ps_types
 
-
+init_N = torch.tensor([-0.5272, 1.3593, 0.000]).float()
+init_CA = torch.zeros_like(init_N)
+init_C = torch.tensor([1.5233, 0.000, 0.000]).float()
+norm_N = init_N / (torch.norm(init_N, dim=-1, keepdim=True) + 1e-5)
+norm_C = init_C / (torch.norm(init_C, dim=-1, keepdim=True) + 1e-5)
+cos_ideal_NCAC = torch.sum(norm_N*norm_C, dim=-1) # cosine of ideal N-CA-C bond angle
 
 def rigid_from_3_points(N, Ca, C, non_ideal=False, eps=1e-8):
     #N, Ca, C - [B,L, 3]
@@ -187,15 +221,19 @@ def rigid_from_3_points(N, Ca, C, non_ideal=False, eps=1e-8):
 
 
 class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
-    def __init__(self, chains=['_p1','_p2']):
+    def __init__(self, chains=['_p1','_p2'], molecule='protein'):
 
         self.chains=chains
         
         # get ideal pseudoatom coords and types for aminoacids
-        ps, ts=martinize(num2aa, 
-                 [list(x.keys()) for x in ideal_coords],
-                 [list(x.values()) for x in ideal_coords] )
-
+        if molecule=='protein':
+            ps, ts=martinize(num2aa, 
+                     [list(x.keys()) for x in ideal_coords],
+                     [list(x.values()) for x in ideal_coords] )
+        if molecule=='na':
+            ps, ts=martinize(num2na, 
+                     [list(x.keys()) for x in ideal_coords_na],
+                     [list(x.values()) for x in ideal_coords_na] )
         assert len(ps)==len(ts)
 
         self.num_aa=len(ts) # A
@@ -263,10 +301,10 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
 
 class BB2MartiniModule(nn.Module, BB2Martini):
     
-    def __init__(self, chains=['_p1','_p2']):
+    def __init__(self, chains=['_p1','_p2'], molecule='protein'):
 
         nn.Module.__init__(self)
-        BB2Martini.__init__(self,chains)
+        BB2Martini.__init__(self,chains, molecule)
 
         self.map_coords=nn.Parameter(self.map_coords, requires_grad=False)
         self.map_types=nn.Parameter(self.map_types, requires_grad=False)
@@ -302,8 +340,7 @@ class BB2MartiniModule(nn.Module, BB2Martini):
 
 class ReshapeBB: # то сut backbone atoms from the protein
 
-    def __init__(self,encoder={'N': 0, 'CA': 1, 'C': 2}, chains=['_p1','_p2']):
-        self.encoder=encoder
+    def __init__(self, chains=['_p1','_p2']):
         self.chains=chains
     
     @torch.no_grad()
@@ -333,9 +370,9 @@ class ReshapeBB: # то сut backbone atoms from the protein
                 seq=seq[mask,:2].unique(dim=0)
                 assert len(seq)*3==len(data[f'atom_resid{ch}'])
     
-            bb_xyz=torch.stack((data[f'atom_xyz{ch}'][self.encoder['N']::3],
-                                data[f'atom_xyz{ch}'][self.encoder['CA']::3],
-                                data[f'atom_xyz{ch}'][self.encoder['C']::3]), 
+            bb_xyz=torch.stack((data[f'atom_xyz{ch}'][0::3],
+                                data[f'atom_xyz{ch}'][1::3],
+                                data[f'atom_xyz{ch}'][2::3]), 
                                dim=1)
             for key in list(data.keys):
                 if ch not in key:
@@ -347,3 +384,4 @@ class ReshapeBB: # то сut backbone atoms from the protein
             data[f'bb_xyz{ch}']=bb_xyz.detach() # coordinates of 3 backbone atoms
 
         return data    
+    

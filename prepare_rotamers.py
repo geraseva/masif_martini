@@ -84,6 +84,25 @@ def get_coords_aa(aa):
         atomdict[atom]=((atomdict[atom]-Ca)*R.T).sum(1).round(4)    
     
     return atomdict
+
+NA_to_threeNA = { "A" : "atp", "C" : "ctp", "G" : "gtp", "T" : "ttp", "U" : "utp",
+                 "DA" : "atp", "DC" : "ctp", "DG" : "gtp", "DT" : "ttp", "DU" : "utp"}
+
+def get_coords_na(na):
+    cmd.reinitialize()
+    cmd.editor.cmd.editor.attach_nuc_acid('none',NA_to_threeNA[na],('DNA' if 'D' in na else 'RNA'),
+                                          object=na, dbl_helix=False)
+    atomdict={}
+    for atom in cmd.get_model("byres ("+na+")").atom:
+        name=atom.name
+        if name[0].isdigit():
+            name=name[1:]+name[0]
+        atomdict[name]=np.array(atom.coord)
+    R, Ca=rotate_3_points(atomdict["C1'"],atomdict["C3'"],atomdict["C4'"])
+    for atom in atomdict:
+        atomdict[atom]=((atomdict[atom]-Ca)*R.T).sum(1).round(4)    
+    
+    return atomdict
         
 # Atoms for each side-chain angle for each residue
 CHIS = {}
@@ -203,4 +222,19 @@ else:
     with open('datasets/ideal_coords.pkl', 'rb') as f:
         ideal_coords = pickle.load(f)
     
+# get_rotamers for nucleic acids
 
+num2na=['DA','DC','DG','DT','A','C','G','U']
+if not os.path.exists('datasets/ideal_coords_na.pkl'):
+    # calculate atomic coordinates for each nucleotide   
+    ideal_coords_na=[]
+    for na in num2na:
+        if na in ['UNK','MAS']:
+            na='U'
+        ideal_coords_na.append(get_coords_na(na))
+
+    with open('datasets/ideal_coords_na.pkl','wb') as f:
+        pickle.dump(ideal_coords_na, f)
+else:
+    with open('datasets/ideal_coords_na.pkl', 'rb') as f:
+        ideal_coords_na = pickle.load(f)

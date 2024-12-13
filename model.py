@@ -524,6 +524,16 @@ class dMaSIF(nn.Module):
         elif args['feature_generation']=='AtomNet_V_MP':
             self.atomnet = AtomNet_V_MP(args)
 
+        if args['asymmetric']:
+            if args['feature_generation']=='AtomNet':
+                self.atomnet2 = AtomNet(args)
+            elif args['feature_generation']=='AtomNet_MP':
+                self.atomnet2 = AtomNet_MP(args)
+            elif args['feature_generation']=='AtomNet_V':
+                self.atomnet2 = AtomNet_V(args)
+            elif args['feature_generation']=='AtomNet_V_MP':
+               self.atomnet2 = AtomNet_V_MP(args)            
+
         self.dropout = nn.Dropout(args['dropout'])
 
             # Post-processing, without batch norm:
@@ -543,7 +553,8 @@ class dMaSIF(nn.Module):
             )
 
             # Asymmetric embedding
-        if args['split']:
+        if args['split'] or args['asymmetric']:
+
             self.orientation_scores2 = nn.Sequential(
                     nn.Linear(I, O),
                     nn.LeakyReLU(negative_slope=0.2),
@@ -567,6 +578,14 @@ class dMaSIF(nn.Module):
                 nn.LeakyReLU(negative_slope=0.2),
                 nn.Linear(H, C),
             )
+            if args['asymmetric']:
+                self.net_out = nn.Sequential(
+                    nn.Linear(E, H),
+                    nn.LeakyReLU(negative_slope=0.2),
+                    nn.Linear(H, H),
+                    nn.LeakyReLU(negative_slope=0.2),
+                    nn.Linear(H, C),
+                )
 
 
     def features(self, P, i=1):
@@ -582,31 +601,37 @@ class dMaSIF(nn.Module):
         )
 
         # Compute chemical features on-the-fly:
-        chemfeats = self.atomnet(
-            P["xyz"], P["atom_xyz"], P["atom_types"], P["batch_xyz"], P["batch_atom_xyz"], P.get('atom_weights')
-        )
-
+        if i==1:
+            chemfeats = self.atomnet(
+                P["xyz"], P["atom_xyz"], P["atom_types"], P["batch_xyz"], P["batch_atom_xyz"], P.get('atom_weights')
+            )
+        elif i==2:
+            chemfeats = self.atomnet2(
+                P["xyz"], P["atom_xyz"], P["atom_types"], P["batch_xyz"], P["batch_atom_xyz"], P.get('atom_weights')
+            )
         # Concatenate our features:
         return torch.cat([P_curvatures, chemfeats], dim=1).contiguous()
 
-    def embed(self, P):
+    def embed(self, P, i=1):
         """Embeds all points of a protein in a high-dimensional vector space."""
 
-        features = self.dropout(self.features(P))
+        features = self.dropout(self.features(P, i=i))
         P["input_features"] = features
         
         conv_time = time.time()
 
         # Ours:
-        self.conv.load_mesh(
-                P["xyz"],
-                triangles=None,
-                normals=P["normals"],
-                weights=self.orientation_scores(features),
-                batch=P["batch_xyz"],
-            )
-        P["embedding_1"] = self.conv(features)
-        if self.args['split']:
+        if i==1:
+            self.conv.load_mesh(
+                    P["xyz"],
+                    triangles=None,
+                    normals=P["normals"],
+                    weights=self.orientation_scores(features),
+                    batch=P["batch_xyz"],
+                )
+            P["embedding_1"] = self.conv(features)
+
+        if self.args['split'] or i==2:
             self.conv2.load_mesh(
                     P["xyz"],
                     triangles=None,
@@ -615,6 +640,7 @@ class dMaSIF(nn.Module):
                     batch=P["batch_xyz"],
                 )
             P["embedding_2"] = self.conv2(features)
+
 
         conv_time = time.time()-conv_time
         memory_usage = torch.cuda.max_memory_allocated()
@@ -647,24 +673,46 @@ class dMaSIF(nn.Module):
         if P2 is not None:
             if ("xyz" not in P2):
                 surf_time += self.preprocess_surface(P2)
-            P1P2 = combine_pair(P1, P2)
+
+        if self.args['asymmetric']:
+
+            c1, m1 = self.embed(P1, i=1)
+            c2, m2 = self.embed(P2, i=2)
+
+            # Monitor the approximate rank of our representations:
+            R_values = {}
+            R_values["input1"] = soft_dimension(P1["input_features"])
+            R_values["conv1"] = soft_dimension(P1["embedding_1"])
+            R_values["input2"] = soft_dimension(P2["input_features"])
+            R_values["conv2"] = soft_dimension(P2["embedding_2"])
+
+            if self.args['n_outputs']>0:
+                P1["preds"] = self.net_out1(P1["embedding_1"])
+                P2["preds"] = self.net_out2(P2["embedding_2"])
+            
+            conv_time=c1+c2
+            memory_usage=m1+m2   
+
         else:
-            P1P2 = P1
+            if P2 is not None:
+                P1P2 = combine_pair(P1, P2)
+            else:
+                P1P2 = P1
 
-        conv_time, memory_usage = self.embed(P1P2)
+            conv_time, memory_usage = self.embed(P1P2)
 
-        # Monitor the approximate rank of our representations:
-        R_values = {}
-        R_values["input"] = soft_dimension(P1P2["input_features"])
-        R_values["conv"] = soft_dimension(P1P2["embedding_1"])
+            # Monitor the approximate rank of our representations:
+            R_values = {}
+            R_values["input"] = soft_dimension(P1P2["input_features"])
+            R_values["conv"] = soft_dimension(P1P2["embedding_1"])
 
-        if self.args['n_outputs']>0:
-            P1P2["preds"] = self.net_out(P1P2["embedding_1"])
+            if self.args['n_outputs']>0:
+                P1P2["preds"] = self.net_out(P1P2["embedding_1"])
 
-        if P2 is not None:
-            P1, P2 = split_pair(P1P2)
-        else:
-            P1 = P1P2
+            if P2 is not None:
+                P1, P2 = split_pair(P1P2)
+            else:
+                P1 = P1P2
 
         return {
             "P1": P1,

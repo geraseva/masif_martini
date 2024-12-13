@@ -5,7 +5,7 @@ num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
         'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
         'UNK','MAS'] # from https://github.com/baker-laboratory/rf_diffusion_all_atom/blob/main/chemical.py
         
-from martinize import pseudoatom_radii, pseudoatom_weights, list_pseudo
+from martinize import pseudoatom_radii, pseudoatom_weights
 
 net_parser = argparse.ArgumentParser(description="Network parameters", add_help=False,usage='')
 
@@ -108,6 +108,9 @@ net_parser.add_argument(
 net_parser.add_argument('--split', default=True, 
                         type=lambda x: (str(x).lower() == 'true'),
                         help="Whether to train two conv modules")
+net_parser.add_argument('--asymmetric', default=False, 
+                        type=lambda x: (str(x).lower() == 'true'),
+                        help="Whether to train two feature encoder modules")
 net_parser.add_argument("--dropout", type=float, default=0.0,
     help="Amount of Dropout for the input features"
 )
@@ -272,24 +275,35 @@ def parse_train():
                     'atom_chains':[{'name': 'atom_chain',
                       'encoder': dict_wrap(ord)
                      }
-                    ]}    
+                    ]}   
+            if args.na!='protein':
+                args.encoders['atom_names'][0]['encoder']={'N':0,'CA':1,'C':2,"C1'":0,"C3'":1,"C4'":2,'-':0}
+                args.encoders['atom_names'][1]['encoder']={'N':1,'CA':1,'C':1,"C1'":1,"C3'":1,"C4'":1,'-':0}
+                
         else:
             if not args.martini:
                 args.encoders={ 'atom_types': [{'name': 'atom_types',
-                                                 'encoder': {"C": 0, "H": 1, "O": 2, "N": 3, "S": 4, "P": 5, '-': 4 }},
+                                                 'encoder': {"C": 0, "H": 1, "O": 2, "N": 3, "S": 4, "P": 4, '-': 4 }},
                                             {'name': 'atom_rad',
                                                  'encoder': {'H': 1.10, 'C': 1.70, 'N': 1.55, 'O': 1.52, '-': 1.80}
                                             }]}
             else:
                 args.encoders={'atom_types': [{'name': 'atom_types',
-                                                 'encoder': {x:i for i, x in enumerate(list_pseudo)}
+                                                 'encoder': {'P5': 0, 'AC1': 1, 'C5': 2, 'SP1': 3, 'N0': 4, 'AC2': 5, 
+                                                             'C3': 6, 'P1': 7, 'Qa': 8, 'P4': 9, 'Qd': 10, 'SC4': 11}
                                            },
                                             {'name': 'atom_rad',
-                                                 'encoder': {**pseudoatom_radii, **{'-': 2**(1/6)*4.7}}
+                                                 'encoder': {**pseudoatom_radii, **{'-': 4.7}}
                                             },
                                             {'name': 'atom_weights',
                                                  'encoder': {**pseudoatom_weights, **{'-': 72.0}}
                                             }]}
+                if args.na!='protein':
+                    args.encoders['atom_names'][0]['encoder']={'P5': 0, 'AC1': 1, 'C5': 2, 'SP1': 3, 'N0': 4, 'AC2': 5, 
+                                                               'C3': 6, 'P1': 7, 'Qa': 8, 'P4': 9, 'Qd': 10, 'SC4': 11,
+                                                               "Q0":0,"SN0":1,"SC2":2,"SNda":3,"TN0":4,"TA2":5,"TA3":6,
+                                                               "TG2":7,"TG3":8,"TY2":9,"TY3":10,"TT2":11,"TT3":12,"TNa":13}
+
             if args.no_h:
                 for encoder in args.encoders['atom_types']:
                     val=encoder['encoder'].pop('H')

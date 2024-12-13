@@ -32,7 +32,6 @@ def save_protein_batch_single(protein_pair_id, P, save_path, pdb_idx):
     inputs = P["input_features"]
 
     embedding = P["embedding_1"] if pdb_idx == 1 else P["embedding_2"]
-    emb_id = 1 if pdb_idx == 1 else 2
 
     if "preds" in P.keys():
         if P["preds"].shape[1]==1:
@@ -56,7 +55,7 @@ def save_protein_batch_single(protein_pair_id, P, save_path, pdb_idx):
             )
 
 
-def compute_binary_loss(P1, P2, lf=F.binary_cross_entropy_with_logits):
+def compute_binary_loss(P1, lf=F.binary_cross_entropy_with_logits):
 
     # binary
     pos_preds = P1["preds"][P1["labels"] > 0]
@@ -88,11 +87,14 @@ def compute_complementary_loss(P1, P2, lf=F.binary_cross_entropy_with_logits):
     pos_descs2 = P2["embedding_2"][P2["edge_labels"],:]
     pos_preds = torch.sum(pos_descs1*pos_descs2, axis=-1)
 
-    pos_descs1_2 = P1["embedding_2"][P1["edge_labels"],:]
-    pos_descs2_2 = P2["embedding_1"][P2["edge_labels"],:]
-    pos_preds2 = torch.sum(pos_descs1_2*pos_descs2_2, axis=-1)
+    try:
+        pos_descs1_2 = P1["embedding_2"][P1["edge_labels"],:]
+        pos_descs2_2 = P2["embedding_1"][P2["edge_labels"],:]
+        pos_preds2 = torch.sum(pos_descs1_2*pos_descs2_2, axis=-1)
 
-    pos_preds = torch.cat([pos_preds, pos_preds2], dim=0)
+        pos_preds = torch.cat([pos_preds, pos_preds2], dim=0)
+    except KeyError:
+        pass
 
     n_desc_sample = 100
         
@@ -101,13 +103,16 @@ def compute_complementary_loss(P1, P2, lf=F.binary_cross_entropy_with_logits):
     sample_desc2 = P2["embedding_2"][sample_desc2]
     neg_preds = torch.matmul(sample_desc1, sample_desc2.T).view(-1)
 
-    sample_desc2_1=P1["embedding_2"][P1["labels"] == 1]
-    sample_desc1_2 = torch.randperm(len(P1["embedding_2"]))[:n_desc_sample]
-    sample_desc1_2 = P1["embedding_2"][sample_desc1_2]
-    neg_preds_2 = torch.matmul(sample_desc2_1, sample_desc1_2.T).view(-1)
+    try:
+        sample_desc2_1=P1["embedding_2"][P1["labels"] == 1]
+        sample_desc1_2 = torch.randperm(len(P1["embedding_2"]))[:n_desc_sample]
+        sample_desc1_2 = P1["embedding_2"][sample_desc1_2]
+        neg_preds_2 = torch.matmul(sample_desc2_1, sample_desc1_2.T).view(-1)
 
-    neg_preds = torch.cat([neg_preds, neg_preds_2], dim=0)
-
+        neg_preds = torch.cat([neg_preds, neg_preds_2], dim=0)
+    except KeyError:
+        pass
+    
     pos_labels = torch.ones_like(pos_preds)
     neg_labels = torch.zeros_like(neg_preds)
 
@@ -200,19 +205,31 @@ def iterate(
         P1_batch = outputs["P1"]
         P2_batch = outputs["P2"]
 
+        bsampled_preds = None
+        bsampled_labels = None
+        bsampled_preds2 = None
+        bsampled_labels2 = None
+        csampled_preds = None
+        csampled_labels = None
+
         if P1_batch["labels"] is not None:
-            bloss, bsampled_preds, bsampled_labels=compute_binary_loss(P1_batch, P2_batch)
-            closs, csampled_preds, csampled_labels=compute_complementary_loss(P1_batch, P2_batch)
-            loss=bloss+closs
-            info_dict["binary_loss"]=bloss.detach().item()
-            info_dict["complementary_loss"]=closs.detach().item()
+            loss=0
+            if net.args['n_outputs']>0:
+                bloss, bsampled_preds, bsampled_labels=compute_binary_loss(P1_batch)
+                loss+=bloss
+                info_dict["binary_loss"]=bloss.detach().item()
+            if net.args['asymmetric']:
+                bloss2, bsampled_preds2, bsampled_labels2=compute_binary_loss(P2_batch)
+                loss+=bloss2
+                info_dict["binary_loss2"]=bloss2.detach().item()
+            if net.args['split']:
+                closs, csampled_preds, csampled_labels=compute_complementary_loss(P1_batch, P2_batch)
+                info_dict["complementary_loss"]=closs.detach().item()
+                loss+=closs
             info_dict["loss"]=loss.detach().item()
 
         else:
-            bsampled_preds = None
-            bsampled_labels = None
-            csampled_preds = None
-            csampled_labels = None
+            pass
 
         # Compute the gradient, update the model weights:
         if not test:
@@ -221,6 +238,8 @@ def iterate(
 
         if bsampled_labels is not None and bsampled_labels.shape[0]>0:
             info_dict["binary_AUROC"]=binary_auroc(bsampled_preds.view(-1),bsampled_labels.view(-1)).detach().item()
+        if bsampled_labels2 is not None and bsampled_labels2.shape[0]>0:
+            info_dict["binary_AUROC2"]=binary_auroc(bsampled_preds2.view(-1),bsampled_labels2.view(-1)).detach().item()
         if csampled_labels is not None and csampled_labels.shape[0]>0:
             info_dict["complementary_AUROC"]=binary_auroc(csampled_preds.view(-1),csampled_labels.view(-1)).detach().item()
 
