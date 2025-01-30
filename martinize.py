@@ -17,18 +17,16 @@ except FileNotFoundError:
     from .prepare_rotamers import ideal_coords, ideal_coords_na
 
 num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
-        'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
-        'UNK','MAS']
+        'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL']
 num2na=['DA','DC','DG','DT','A','C','G','U']
 
 def nsplit(*x):
     return [i.split() for i in x]
 mass = {'H': 1, 'C': 12, 'N': 14, 'O': 16, 'S': 32, 'P': 31, 'M': 0}
 bb = "N CA C O H H1 H2 H3 O1 O2"
+unknown_mapping=nsplit(bb + " CB")
 mapping = {
         "ALA":  nsplit(bb + " CB"),
-        "UNK":  nsplit(bb + " CB"), # added unknown atoms as alanines
-        "MAS":  nsplit(bb + " CB"),
         "CYS":  nsplit(bb, "CB SG"),
         "SEC":  nsplit(bb, "CB SEG"),
         "ASP":  nsplit(bb, "CB CG OD1 OD2"),
@@ -108,8 +106,6 @@ mapping = {
 
 pseudoatom_types = {
         "ALA":  ['P4'],
-        "UNK":  ['P4'], # added unknown atoms as alanines
-        "MAS":  ['P4'],
         "CYS":  ['P5','C5'],
         "SEC":  ['P5','C5'],
         "ASP":  ['P5','Qa'],
@@ -167,7 +163,7 @@ def martinize(seq, atoms, coords):
 
         av=[]
         for a, xyz in zip(ass, xyzs):
-            for j, m in enumerate(mapping[aa]):
+            for j, m in enumerate(mapping.get(aa,unknown_mapping)):
                 if len(av)<=j:
                     av.append([[0,0,0],0])
                 if a in m:
