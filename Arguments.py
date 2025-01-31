@@ -264,7 +264,7 @@ def parse_train():
                       'encoder': {'N': 1, 'CA': 1, 'C': 1, '-': 0}
                      }],
                     'atom_resnames':[{'name': 'sequence',
-                      'encoder': {**{a: i for i, a in enumerate(num2aa)},**{'-': 20}}
+                      'encoder': {**{a: i for i, a in enumerate(num2aa)},**{'-': 0}}
                      }
                     ],
                     'atom_resids':[{'name': 'atom_resid',

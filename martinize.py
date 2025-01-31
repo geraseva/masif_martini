@@ -103,7 +103,7 @@ mapping = {
                      "C3' C2' O2' C1'",
                      "N3 C2 O2",
                      "C5 C4 O4 C7 C5M")} 
-
+unknown_types=['P4']
 pseudoatom_types = {
         "ALA":  ['P4'],
         "CYS":  ['P5','C5'],
@@ -174,7 +174,7 @@ def martinize(seq, atoms, coords):
         av=[[ps[0][0]/ps[1],ps[0][1]/ps[1],ps[0][2]/ps[1]] for ps in av if ps[1]>0]
         
         ps_coords.append(av)
-        ps_types.append(pseudoatom_types[aa][:len(av)])
+        ps_types.append(pseudoatom_types.get(aa, unknown_types)[:len(av)])
     return ps_coords, ps_types
 
 init_N = torch.tensor([-0.5272, 1.3593, 0.000]).float()

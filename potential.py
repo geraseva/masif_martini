@@ -285,6 +285,8 @@ class ProteinGenerator_potential_from_bb:
         self.threshold=threshold
         self.binderlen=binderlen
 
+        self.renumber_aa=torch.tensor([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19], dtype=int)
+
         self.device='cuda' if torch.cuda.is_available() else 'cpu'
 
         self.recover_sc=None
@@ -412,6 +414,8 @@ class ProteinGenerator_potential_from_bb:
         
         if self.recover_sc==None:
             self.init_recover_sc()
+        
+        seq=seq[:,self.renumber_aa]
 
         d=self.bb2martini(xyz, seq)
 
