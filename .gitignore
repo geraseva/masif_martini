@@ -2,6 +2,8 @@ runs/
 obsolete/
 surface_data/
 preds/
+models/
+datasets/
 logs/
 __pycache__/
 .*/

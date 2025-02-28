@@ -21,8 +21,7 @@ except ModuleNotFoundError:
 
 
 num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
-        'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL',
-        'UNK','MAS']
+        'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL']
 
 
 def get_O_from_3_points(xyz, bond=1.24, eps=1e-8):
@@ -94,7 +93,7 @@ class RFdiff_potential_from_bb:
         self.recover_sc=None
 
         # Initialize dMaSIF
-        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb_no_v'
+        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb'
         surf_checkpoint=torch.load(checkpoint_path, map_location=self.device)
         self.surf_model=dMaSIF(surf_checkpoint['net_args'])
         self.surf_model.load_state_dict(surf_checkpoint["model_state_dict"])
@@ -417,6 +416,8 @@ class ProteinGenerator_potential_from_bb:
         
         seq=seq[:,self.renumber_aa]
 
+        seq=F.softmax(seq, dim=1)
+
         d=self.bb2martini(xyz, seq)
 
         d=self.dmasif(d)
@@ -425,7 +426,7 @@ class ProteinGenerator_potential_from_bb:
 
         binary_loss, complementary_loss=self.calc_loss(P1, P2)
 
-        print('DMASIF BINARY LOSS:',binary_loss)
+        print('DMASIF BINARY LOSS:',binary_loss, flush=True)
         print('DMASIF COMPLEMENTARY LOSS:',complementary_loss)
 
 

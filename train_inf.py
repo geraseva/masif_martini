@@ -35,7 +35,7 @@ if __name__ == "__main__":
             ddp=False 
 
         if args['restart_training'] != "":
-            checkpoint = torch.load("models/" + args['restart_training'], map_location=args['devices'][0])
+            checkpoint = torch.load( os.path.join(os.path.dirname(__file__),"models/",args['restart_training']), map_location=args['devices'][0])
             net=dMaSIF(checkpoint['net_args'])
             net.load_state_dict(checkpoint["model_state_dict"])
             net.to(args['devices'][0])
@@ -111,7 +111,7 @@ if __name__ == "__main__":
         print(f'## Execution complete {fulltime} seconds')
     else:
 
-        model_path = "models/" + args['experiment_name']
+        model_path = os.path.join(os.path.dirname(__file__),"models",args['experiment_name'])
         checkpoint=torch.load(model_path, map_location=args['device'])
         if checkpoint['net_args'].get('encoders')!=None:
             args['encoders']=checkpoint['net_args']['encoders']
@@ -172,8 +172,6 @@ if __name__ == "__main__":
         test_loader = DataLoader(
             test_dataset, batch_size=args['batch_size'], collate_fn=CollateData(batch_vars), shuffle=False)
 
-        save_predictions_path = Path("preds/" + args['experiment_name'])
-
         print('# Start prediction')
 
         if not os.path.isdir(Path(args['out_dir'])):
@@ -190,11 +188,12 @@ if __name__ == "__main__":
 
         json.dump(info, open(args['out_dir']+'/meta.json', 'w'), indent=4)
 
+        print('## Data saved to',args['out_dir'])
+
         for i, pdbs in enumerate(info['PDB IDs']):
             print('; '.join(pdbs))
             for key in info:
                 if key not in ['PDB IDs']:
                     print(f"    {key} {info[key][i]}")
 
-        print('## Data saved to',save_predictions_path)
 

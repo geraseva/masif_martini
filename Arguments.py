@@ -284,7 +284,9 @@ def parse_train():
                 args.encoders={ 'atom_types': [{'name': 'atom_types',
                                                  'encoder': {"C": 0, "H": 1, "O": 2, "N": 3, "S": 4, "P": 4, '-': 4 }},
                                             {'name': 'atom_rad',
-                                                 'encoder': {'H': 1.10, 'C': 1.70, 'N': 1.55, 'O': 1.52, '-': 1.80}
+                                                 'encoder': {'H': 1.10, 'C': 1.70, 'N': 1.55, 'O': 1.52, '-': 1.80}},
+                                            {'name': 'atom_weights',
+                                                 'encoder': {'H': 1.0, 'C': 12.0, 'N': 14.0, 'O': 16.0, "S": 32.0, "P": 31.0, '-': 40.0}
                                             }]}
             else:
                 args.encoders={'atom_types': [{'name': 'atom_types',
