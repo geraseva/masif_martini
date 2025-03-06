@@ -45,7 +45,8 @@ def get_O_from_3_points(xyz, bond=1.24, eps=1e-8):
 
 class RFdiff_potential_from_bb:
 
-    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, threshold=3, seq_model_type='ligand_mpnn'):
+    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, 
+                 pos_threshold=3, neg_threshold=5, seq_model_type='protein_mpnn'):
 
         import LigandMPNN
         from LigandMPNN.model_utils import ProteinMPNN
@@ -58,7 +59,8 @@ class RFdiff_potential_from_bb:
 
         self.int_weight=int_weight
         self.non_int_weight=non_int_weight
-        self.threshold=threshold
+        self.pos_threshold=pos_threshold
+        self.neg_threshold=neg_threshold
         self.binderlen=binderlen
 
         self.device='cuda' if torch.cuda.is_available() else 'cpu'
@@ -196,7 +198,7 @@ class RFdiff_potential_from_bb:
             xyz2_j = LazyTensor(P2['xyz'][None, :, :])
 
             xyz_dists = ((xyz1_i - xyz2_j) ** 2).sum(-1)
-            xyz_dists = (self.threshold**2 - xyz_dists).step()
+            xyz_dists = (self.neg_threshold**2 - xyz_dists).step()
 
             P1['labels'] = (xyz_dists.sum(1) > 1.0).view(-1).detach()
             P2['labels'] = (xyz_dists.sum(0) > 1.0).view(-1).detach()
@@ -207,7 +209,7 @@ class RFdiff_potential_from_bb:
             pos_xyz_dists = (
                 ((pos_xyz1[:, None, :] - pos_xyz2[None, :, :]) ** 2).sum(-1)
             )
-            edges=torch.nonzero(self.threshold**2 > pos_xyz_dists, as_tuple=True)
+            edges=torch.nonzero(self.pos_threshold**2 > pos_xyz_dists, as_tuple=True)
 
             P1['edge_labels']=torch.nonzero(P1['labels'])[edges[0]].view(-1).detach()
             P2['edge_labels']=torch.nonzero(P2['labels'])[edges[1]].view(-1).detach()
@@ -277,11 +279,12 @@ class RFdiff_potential_from_bb:
 
 class ProteinGenerator_potential_from_bb:
 
-    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, threshold=3):
+    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, pos_threshold=3, neg_threshold=5):
 
         self.int_weight=int_weight
         self.non_int_weight=non_int_weight
-        self.threshold=threshold
+        self.pos_threshold=pos_threshold
+        self.neg_threshold=neg_threshold
         self.binderlen=binderlen
 
         self.renumber_aa=torch.tensor([0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19], dtype=int)
@@ -350,7 +353,7 @@ class ProteinGenerator_potential_from_bb:
             xyz2_j = LazyTensor(P2['xyz'][None, :, :])
 
             xyz_dists = ((xyz1_i - xyz2_j) ** 2).sum(-1)
-            xyz_dists = (self.threshold**2 - xyz_dists).step()
+            xyz_dists = (self.neg_threshold**2 - xyz_dists).step()
 
             P1['labels'] = (xyz_dists.sum(1) > 1.0).view(-1).detach()
             P2['labels'] = (xyz_dists.sum(0) > 1.0).view(-1).detach()
@@ -361,7 +364,7 @@ class ProteinGenerator_potential_from_bb:
             pos_xyz_dists = (
                 ((pos_xyz1[:, None, :] - pos_xyz2[None, :, :]) ** 2).sum(-1)
             )
-            edges=torch.nonzero(self.threshold**2 > pos_xyz_dists, as_tuple=True)
+            edges=torch.nonzero(self.pos_threshold**2 > pos_xyz_dists, as_tuple=True)
 
             P1['edge_labels']=torch.nonzero(P1['labels'])[edges[0]].view(-1).detach()
             P2['edge_labels']=torch.nonzero(P2['labels'])[edges[1]].view(-1).detach()
@@ -415,8 +418,6 @@ class ProteinGenerator_potential_from_bb:
             self.init_recover_sc()
         
         seq=seq[:,self.renumber_aa]
-
-        seq=F.softmax(seq, dim=1)
 
         d=self.bb2martini(xyz, seq)
 
