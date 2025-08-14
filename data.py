@@ -185,7 +185,7 @@ def load_protein_pair(filename, encoders, chains1, chains2=None, martini='12'):
     protein_pair = PairData()   
     parser = PDBParser(QUIET=True)
         
-    if True:
+    try:
         structure = parser.get_structure('sample', filename)
         modified=find_modified_residues(filename)
             
@@ -197,10 +197,10 @@ def load_protein_pair(filename, encoders, chains1, chains2=None, martini='12'):
             p2=load_structure_np(structure, chain_ids=chains2, modified=modified, martini=('2' in martini))
             p2 = encode_npy(p2, encoders=encoders)
             protein_pair.from_dict(p2, chain_idx=2)
-    #except KeyboardInterrupt:
-    #    raise KeyboardInterrupt
-    #except:
-    #    protein_pair=None
+    except KeyboardInterrupt:
+        raise KeyboardInterrupt
+    except:
+        protein_pair=None
 
     return protein_pair
 
@@ -355,9 +355,10 @@ class NpiDataset(Dataset):
         protein_pair=load_protein_pair(f'{self.raw_dir}/{pspl[0]}.pdb', 
                                        self.encoders, pspl[1], pspl[2] if len(pspl)==3 else None, 
                                        martini=self.martini)
-        protein_pair.idx=idx
         if protein_pair is None:
             print(f'##! Skipping non-existing files for {idx}' )
+        else:
+            protein_pair.idx=idx
         
         return protein_pair
 

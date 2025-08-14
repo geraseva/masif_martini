@@ -43,10 +43,22 @@ def get_O_from_3_points(xyz, bond=1.24, eps=1e-8):
 
     return xyz_out
 
+def probability(preds, labels, reduction='mean'):
+    preds=torch.sigmoid(preds)
+    if labels.sum()<=0:
+        preds=1-preds
+    if reduction=='none':
+        return preds
+    elif reduction=='mean':
+        return preds.mean()
+    elif reduction=='sum':
+        return preds.sum()
+
+
 class RFdiff_potential_from_bb:
 
     def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, 
-                 pos_threshold=3, neg_threshold=5, seq_model_type='protein_mpnn'):
+                 pos_threshold=3, neg_threshold=3, seq_model_type='protein_mpnn'):
 
         import LigandMPNN
         from LigandMPNN.model_utils import ProteinMPNN
@@ -216,10 +228,10 @@ class RFdiff_potential_from_bb:
    
         return P1, P2
 
-    def calc_loss(self, P1, P2, lf=F.binary_cross_entropy_with_logits):
+    def calc_loss(self, P1, P2, lf=F.binary_cross_entropy_with_logits): # F.binary_cross_entropy_with_logits):
 
-        binary_loss=0
-        complementary_loss=0
+        binary_loss=0.0
+        complementary_loss=0.0
         if self.binderlen<0:
             binary_loss+= lf(P1['preds'], P1['labels'], reduction='mean')
         else:
@@ -236,20 +248,21 @@ class RFdiff_potential_from_bb:
                 pos_preds = torch.cat([pos_preds, pos_preds2], dim=0)
                 pos_labels = torch.ones_like(pos_preds)
 
-                complementary_loss+=lf(pos_preds, pos_labels, reduction='mean')*self.int_weight
+                complementary_loss+=lf(pos_preds, pos_labels, reduction='mean')
             
             if self.non_int_weight>0:
                        
                 if (P1['labels']==0).sum()>0:
                     neg_preds1=P1['preds'][P1['labels']==0]
                     neg_labels1=torch.zeros_like(neg_preds1)
-                    binary_loss+=lf(neg_preds1, neg_labels1, reduction='mean')*self.non_int_weight
+                    binary_loss+=lf(neg_preds1, neg_labels1, reduction='sum')
 
                 if (P2['labels']==0).sum()>0:
                     neg_preds2=P2['preds'][P2['labels']==0]
                     neg_labels2=torch.zeros_like(neg_preds2)
-                    binary_loss+=lf(neg_preds2, neg_labels2, reduction='mean')*self.non_int_weight
-
+                    binary_loss+=lf(neg_preds2, neg_labels2, reduction='sum')
+                    
+                binary_loss/=((P1['labels']==0).sum()+(P2['labels']==0).sum())
         return binary_loss, complementary_loss
 
     def __call__(self, xyz):
@@ -271,15 +284,19 @@ class RFdiff_potential_from_bb:
         P1, P2=self.gen_labels(d)
 
         binary_loss, complementary_loss=self.calc_loss(P1, P2)
+        if isinstance(binary_loss, float):
+            binary_loss=torch.tensor(binary_loss, requires_grad=True)
+        if isinstance(complementary_loss, float):
+            complementary_loss=torch.tensor(complementary_loss, requires_grad=True)
 
-        print('DMASIF BINARY LOSS:',binary_loss)
-        print('DMASIF COMPLEMENTARY LOSS:',complementary_loss)
+        print('DMASIF BINARY LOSS:',binary_loss.item())
+        print('DMASIF COMPLEMENTARY LOSS:',complementary_loss.item())
 
-        return binary_loss+complementary_loss
+        return binary_loss*self.non_int_weight+complementary_loss*self.int_weight
 
 class ProteinGenerator_potential_from_bb:
 
-    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, pos_threshold=3, neg_threshold=5):
+    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, pos_threshold=3, neg_threshold=3):
 
         self.int_weight=int_weight
         self.non_int_weight=non_int_weight
@@ -391,20 +408,18 @@ class ProteinGenerator_potential_from_bb:
                 pos_preds = torch.cat([pos_preds, pos_preds2], dim=0)
                 pos_labels = torch.ones_like(pos_preds)
 
-                complementary_loss+=lf(pos_preds, pos_labels, reduction='mean')*self.int_weight
+                complementary_loss+=lf(pos_preds, pos_labels, reduction='mean')
             
             if self.non_int_weight>0:
                        
                 if (P1['labels']==0).sum()>0:
                     neg_preds1=P1['preds'][P1['labels']==0]
                     neg_labels1=torch.zeros_like(neg_preds1)
-                    binary_loss+=lf(neg_preds1, neg_labels1, reduction='mean')*self.non_int_weight
-
+                    binary_loss+=lf(neg_preds1, neg_labels1, reduction='mean')
                 if (P2['labels']==0).sum()>0:
                     neg_preds2=P2['preds'][P2['labels']==0]
                     neg_labels2=torch.zeros_like(neg_preds2)
-                    binary_loss+=lf(neg_preds2, neg_labels2, reduction='mean')*self.non_int_weight
-
+                    binary_loss+=lf(neg_preds2, neg_labels2, reduction='mean')
         return binary_loss, complementary_loss
 
     def __call__(self, seq, xyz):
@@ -431,7 +446,7 @@ class ProteinGenerator_potential_from_bb:
         print('DMASIF COMPLEMENTARY LOSS:',complementary_loss)
 
 
-        return binary_loss+complementary_loss
+        return binary_loss*self.non_int_weight+complementary_loss*self.int_weight
 
 if __name__ == "__main__":
 

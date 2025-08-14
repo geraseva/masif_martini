@@ -300,7 +300,7 @@ def parse_train():
                                                  'encoder': {**pseudoatom_weights, **{'-': 72.0}}
                                             }]}
                 if args.na!='protein':
-                    args.encoders['atom_names'][0]['encoder']={'P5': 0, 'AC1': 1, 'C5': 2, 'SP1': 3, 'N0': 4, 'AC2': 5, 
+                    args.encoders['atom_types'][0]['encoder']={'P5': 0, 'AC1': 1, 'C5': 2, 'SP1': 3, 'N0': 4, 'AC2': 5, 
                                                                'C3': 6, 'P1': 7, 'Qa': 8, 'P4': 9, 'Qd': 10, 'SC4': 11,
                                                                "Q0":0,"SN0":1,"SC2":2,"SNda":3,"TN0":4,"TA2":5,"TA3":6,
                                                                "TG2":7,"TG3":8,"TY2":9,"TY3":10,"TT2":11,"TT3":12,"TNa":13}
