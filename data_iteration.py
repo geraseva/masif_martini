@@ -480,7 +480,11 @@ class Compose:
 
     def __call__(self, data):
         # Shallow-copy the data so that we prevent in-place data modification.
-        return self.forward(copy.copy(data))
+        try:
+            return self.forward(copy.copy(data))
+        except:
+            print(f'##! Failed to transform {data.idx}' )
+            return None
 
     def forward(self,data) :
         for transform in self.transforms:

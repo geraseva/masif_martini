@@ -636,6 +636,8 @@ class CenterPairAtoms(object):
 
 @torch.no_grad()       
 def iface_valid_filter(protein_pair):
+    if protein_pair==None:
+        return False
     labels1 = protein_pair['labels_p1'].reshape(-1)>0
     valid1 = (
         (torch.sum(labels1) < 0.75 * len(labels1))
