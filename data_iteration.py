@@ -478,11 +478,13 @@ class Compose:
     def __init__(self, transforms: List[Callable]):
         self.transforms = transforms
 
-    def __call__(self, data):
+    def __call__(self, data, skip_errors=True):
         # Shallow-copy the data so that we prevent in-place data modification.
+        if not skip_errors:
+            return self.forward(copy.copy(data))
         try:
             return self.forward(copy.copy(data))
-        except:
+        except RuntimeError:
             print(f'##! Failed to transform {data.idx}' )
             return None
 
