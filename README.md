@@ -21,10 +21,7 @@ Required libraries:
 # commands used to download and unpack the dataset:
 
 cd masif_martini
-wget --load-cookies /tmp/cookies.txt "https://docs.google.com/uc?export=download&confirm=$(wget --quiet --save-cookies /tmp/cookies.txt  \
---keep-session-cookies --no-check-certificate 'https://docs.google.com/uc?export=download&id=1q8DU3kfeTORHaylOhQ4QVA4wPU1Jv4rQ' -O- | \
-sed -rn 's/.*confirm=([0-9A-Za-z_]+).*/\1\n/p')&id=1q8DU3kfeTORHaylOhQ4QVA4wPU1Jv4rQ" -O pdbs.tar.gz && rm -rf /tmp/cookies.txt
-mkdir datasets
+gdown https://drive.google.com/uc?id=1q8DU3kfeTORHaylOhQ4QVA4wPU1Jv4rQ
 tar -xzvf pdbs.tar.gz -C datasets/
 
 ```

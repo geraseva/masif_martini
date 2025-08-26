@@ -137,7 +137,12 @@ if __name__ == "__main__":
                                      GenerateMatchingLabels(args['threshold']),
                                      RemoveUnusedKeys(keys=['sequence', 'bb_xyz'])]
         if args['from_bb']:
-            pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
+            if args['na']=='protein':
+                pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
+            elif args['na'] in ['DNA','RNA','NA']:
+                pre_transformations=[ReshapeBB(), 
+                                     BB2Martini(chains=['_p1'], molecule='protein'),
+                                     BB2Martini(chains=['_p2'], molecule='na')]+pre_transformations
         pre_transformations=Compose(pre_transformations)
 
         print('# Loading testing set')   
@@ -166,6 +171,7 @@ if __name__ == "__main__":
         
         test_dataset = [pre_transformations(data) for data in tqdm(test_dataset)]
         test_dataset = [transformations(data) for data in tqdm(test_dataset)]
+        test_dataset = [data for data in test_dataset if data!=None]
             
         print('## Test nsamples:',len(test_dataset))
 
