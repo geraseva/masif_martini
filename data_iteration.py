@@ -485,7 +485,10 @@ class Compose:
         try:
             return self.forward(copy.copy(data))
         except RuntimeError:
-            print(f'##! Failed to transform {data.idx}' )
+            print(f'##! RuntimeError! Failed to transform {data.idx}' )
+            return None
+        except IndexError:
+            print(f'##! IndexError! Failed to transform {data.idx}' )
             return None
 
     def forward(self,data) :
