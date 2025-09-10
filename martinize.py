@@ -14,7 +14,12 @@ try:
     with open(os.path.dirname(os.path.abspath(__file__))+'/datasets/ideal_coords.pkl', 'rb') as f:
         ideal_coords = pickle.load(f)
 except FileNotFoundError:
-    from .prepare_rotamers import ideal_coords, ideal_coords_na
+    from .prepare_rotamers import ideal_coords
+try:
+    with open(os.path.dirname(os.path.abspath(__file__))+'/datasets/ideal_coords_na.pkl', 'rb') as f:
+        ideal_coords_na = pickle.load(f)
+except FileNotFoundError:
+    from .prepare_rotamers import ideal_coords_na
 
 num2aa=['ALA','ARG','ASN','ASP','CYS','GLN','GLU','GLY','HIS','ILE',
         'LEU','LYS','MET','PHE','PRO','SER','THR','TRP','TYR','VAL']
