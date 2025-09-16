@@ -53,6 +53,131 @@ def probability(preds, labels, reduction='mean'):
         return preds.mean()
     elif reduction=='sum':
         return preds.sum()
+    
+
+class dmasif_potential:
+
+    def __init__(self, binderlen=-1, int_weight=1, non_int_weight=1, 
+                 pos_threshold=3, neg_threshold=3):
+
+        self.int_weight=int_weight
+        self.non_int_weight=non_int_weight
+        self.pos_threshold=pos_threshold
+        self.neg_threshold=neg_threshold
+        self.binderlen=binderlen
+
+        self.device='cuda' if torch.cuda.is_available() else 'cpu'
+
+        # Initialize dMaSIF
+        checkpoint_path=os.path.dirname(os.path.abspath(__file__))+'/models/martini_prot_from_bb'
+        surf_checkpoint=torch.load(checkpoint_path, map_location=self.device)
+        self.surf_model=dMaSIF(surf_checkpoint['net_args'])
+        self.surf_model.load_state_dict(surf_checkpoint["model_state_dict"])
+        self.surf_model.to(self.device)
+        self.surf_model.eval()
+        print('Load dMaSIF model')
+
+    def dmasif(self, d):
+        
+        for k in list(d.keys()):
+            if k in ["xyz_p1", "xyz_p2", "atom_xyz_p1", "atom_xyz_p2", 'sequence_p1','sequence_p2']:
+                d[f'batch_{k}']=torch.zeros(d[k].shape[0], dtype=int).to(d[k].device)
+     
+        P1 = {x[:-3]: d[x] for x in d.keys() if '_p1' in x}
+        P2 = None if self.binderlen<0 else {x[:-3]: d[x] for x in d.keys() if '_p2' in x}
+
+        out=self.surf_model(P1, P2)
+
+        return out
+
+    @torch.no_grad()       
+    def gen_labels(self, d):
+        
+        if self.binderlen<0:
+
+            P1=d['P1']
+            P1['labels']=torch.zeros_like(P1["preds"])
+            P2=None
+        else:
+            P1=d['P1']
+            P2=d['P2']
+
+            xyz1_i = LazyTensor(P1['xyz'][:, None, :])
+            xyz2_j = LazyTensor(P2['xyz'][None, :, :])
+
+            xyz_dists = ((xyz1_i - xyz2_j) ** 2).sum(-1)
+            xyz_dists = (self.neg_threshold**2 - xyz_dists).step()
+
+            P1['labels'] = (xyz_dists.sum(1) > 1.0).view(-1).detach()
+            P2['labels'] = (xyz_dists.sum(0) > 1.0).view(-1).detach()
+
+            pos_xyz1 = P1['xyz'][P1['labels']==1]
+            pos_xyz2 = P2['xyz'][P2['labels']==1]
+
+            pos_xyz_dists = (
+                ((pos_xyz1[:, None, :] - pos_xyz2[None, :, :]) ** 2).sum(-1)
+            )
+            edges=torch.nonzero(self.pos_threshold**2 > pos_xyz_dists, as_tuple=True)
+
+            P1['edge_labels']=torch.nonzero(P1['labels'])[edges[0]].view(-1).detach()
+            P2['edge_labels']=torch.nonzero(P2['labels'])[edges[1]].view(-1).detach()
+   
+        return P1, P2
+
+    def calc_loss(self, P1, P2, lf=F.binary_cross_entropy_with_logits): # F.binary_cross_entropy_with_logits):
+
+        binary_loss=0.0
+        complementary_loss=0.0
+        if self.binderlen<0:
+            binary_loss+= lf(P1['preds'], P1['labels'], reduction='mean')
+        else:
+            if P1["edge_labels"].shape[0]>0 and self.int_weight>0:
+
+                pos_descs1 = P1["embedding_1"][P1["edge_labels"],:]
+                pos_descs2 = P2["embedding_2"][P2["edge_labels"],:]
+                pos_preds = torch.sum(pos_descs1*pos_descs2, axis=-1)
+
+                pos_descs1_2 = P1["embedding_2"][P1["edge_labels"],:]
+                pos_descs2_2 = P2["embedding_1"][P2["edge_labels"],:]
+                pos_preds2 = torch.sum(pos_descs1_2*pos_descs2_2, axis=-1)
+
+                pos_preds = torch.cat([pos_preds, pos_preds2], dim=0)
+                pos_labels = torch.ones_like(pos_preds)
+
+                complementary_loss+=lf(pos_preds, pos_labels, reduction='mean')
+            
+            if self.non_int_weight>0:
+                       
+                if (P1['labels']==0).sum()>0:
+                    neg_preds1=P1['preds'][P1['labels']==0]
+                    neg_labels1=torch.zeros_like(neg_preds1)
+                    binary_loss+=lf(neg_preds1, neg_labels1, reduction='sum')
+
+                if (P2['labels']==0).sum()>0:
+                    neg_preds2=P2['preds'][P2['labels']==0]
+                    neg_labels2=torch.zeros_like(neg_preds2)
+                    binary_loss+=lf(neg_preds2, neg_labels2, reduction='sum')
+                    
+                binary_loss/=((P1['labels']==0).sum()+(P2['labels']==0).sum())
+        return binary_loss, complementary_loss
+
+    def __call__(self, d):
+
+        d=self.dmasif(d)
+
+        P1, P2=self.gen_labels(d)
+
+        binary_loss, complementary_loss=self.calc_loss(P1, P2)
+        if isinstance(binary_loss, float):
+            binary_loss=torch.tensor(binary_loss, requires_grad=True)
+        if isinstance(complementary_loss, float):
+            complementary_loss=torch.tensor(complementary_loss, requires_grad=True)
+
+        print('DMASIF BINARY LOSS:',binary_loss.item())
+        print('DMASIF COMPLEMENTARY LOSS:',complementary_loss.item())
+
+        return binary_loss*self.non_int_weight+complementary_loss*self.int_weight
+
 
 
 class RFdiff_potential_from_bb:
