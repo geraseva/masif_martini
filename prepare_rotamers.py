@@ -68,11 +68,12 @@ def rotate_3_points(N, Ca, C, non_ideal=False, eps=0):
     
     return R, Ca
 
-def get_coords_aa(aa):
+def get_coords_aa(aa, chi_angles=None):
     cmd.reinitialize()
     cmd.editor.cmd.editor.attach_amino_acid('pk1',aa.lower(),ss=1)
     if aa in CHIS:
-        set_rotamer(aa,*rot[aa])
+        # Prefer explicitly provided chi angles; fallback to global most-popular rotamer
+        set_rotamer(aa, *(chi_angles if chi_angles is not None else rot[aa]))
     atomdict={}
     for atom in cmd.get_model("byres ("+aa+")").atom:
         name=atom.name
@@ -221,6 +222,49 @@ if not os.path.exists('datasets/ideal_coords.pkl'):
 else:
     with open('datasets/ideal_coords.pkl', 'rb') as f:
         ideal_coords = pickle.load(f)
+
+# Build angle-specific ideal coordinates per (RES, PHI_BIN, PSI_BIN)
+# ideal_angles_coords[(RES, PHI, PSI)] -> atom coords dict
+if not os.path.exists('datasets/ideal_angles_coords.pkl'):
+    rotdat = readRotLib()
+    ideal_angles_coords = {}
+    if rotdat is not None:
+        rot_by_angles = {}
+        for key, vals in rotdat.items():
+            # vals: list of [PROB, CHI1, CHI2, CHI3, CHI4]
+            arr = np.array(vals, dtype=float)[:, 1:]
+            w = np.array(vals, dtype=float)[:, 0]
+            # keep only non-all-zero chi columns
+            arr = arr[:, (arr != 0).any(0)]
+            if arr.size == 0:
+                continue
+            # calculate histogram to find most frequent rotamers
+            H, edges = np.histogramdd(
+                arr, bins=36, range=[(-180, 180)] * arr.shape[1], weights=w
+            )
+            # get rotamers that fall into the most frequent bin and find their median
+            max_bin_idx = np.array(np.unravel_index(H.argmax(), H.shape))
+            mask = (
+                (np.digitize(arr, edges[0], right=True) - 1)
+                == max_bin_idx[None, :]
+            ).all(1)
+            rot_by_angles[key] = np.median(arr[mask], axis=0)
+
+        # Compute ideal coords per key using per-(RES,PHI,PSI) rotamer
+        for key, chi in rot_by_angles.items():
+            res, phi, psi = key.split(':')
+            # For residues without side-chain chis, get_coords_aa ignores chi
+            coords = get_coords_aa(res, chi_angles=chi if res in CHIS else None)
+            ideal_angles_coords[(res, phi, psi)] = coords
+
+        with open('datasets/ideal_angles_coords.pkl', 'wb') as f:
+            pickle.dump(ideal_angles_coords, f)
+    else:
+        # Fallback to empty if rotamer lib not found
+        ideal_angles_coords = {}
+else:
+    with open('datasets/ideal_angles_coords.pkl', 'rb') as f:
+        ideal_angles_coords = pickle.load(f)
     
 # get_rotamers for nucleic acids
 
