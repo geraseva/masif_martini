@@ -16,6 +16,26 @@ Required libraries:
 - reduce (used only in full-atom models that need protonation)
 - pymol (used only for calculation of rotamer matrix which is already calculated (datasets/ideal_coords.pkl))
 
+### Angle-aware rotamers (optional)
+
+Angle-aware pseudoatom placement can use per-(amino acid, phi, psi) ideal coordinates.
+
+- Data: `datasets/ideal_angles_coords.pkl` (optional). If present, it is used when
+  `angle_aware=True` in `BB2Martini`/`BB2MartiniModule`. If absent, code falls back to
+  standard per-amino-acid coordinates.
+- Generation: run `masif_martini/prepare_rotamers.py` to build the file. This step
+  requires PyMOL and a bbdep rotamer library (e.g., `bbdep02.May.sortlib`).
+- Enabling: in Python, pass `angle_aware=True` (and optionally `angle_bin_size`, default 10°) when constructing:
+
+```
+from masif_martini.martinize import BB2MartiniModule
+recover_sc = BB2MartiniModule(chains=['_p1'], molecule='protein', angle_aware=True, angle_bin_size=10)
+```
+
+Internally, phi/psi angles are computed from backbone N–CA–C positions and binned to match
+the rotamer library binning (e.g., -180, -170, ...). For bins with no data, the model
+reuses the standard per-amino-acid mapping.
+
 
 ```
 # commands used to download and unpack the dataset:
