@@ -164,6 +164,11 @@ train_inf_parser.add_argument(
     action='store_true',
     help="Reconstruct sidechains from backbone",
 )
+train_inf_parser.add_argument(
+    "--angle_aware",
+    action='store_true',
+    help="Use angles while reconstructing backbones",
+)
 
 train_inf_parser.add_argument('--encoders', type=json.loads, 
     help='How to encode atom labels', default={})
@@ -190,6 +195,11 @@ train_parser.add_argument(
     type=str,
     default=None,
     help="Which structures to test on",
+)
+train_parser.add_argument(
+    "--no_store",
+    action='store_true',
+    help="Not to save preprocessed dataset",
 )
 train_parser.add_argument(
     "--port", type=int, default=12355, help="Port number"

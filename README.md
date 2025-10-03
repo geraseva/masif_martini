@@ -59,9 +59,13 @@ python3 train_inf.py inference --device cpu --batch_size 4 \
 
 ## For collaborators
 
-I have troubles with "CUDA out of memory" error, which raises after about 8 hours of training. 
-When I use parallel computation on multiple gpus, it raises earlier. But the situation is not much better on a single gpu, 
-even without use of DDP modules.
+If you have not downloaded the dataset, run this once:
 ```
-python3 train_inf.py train -e martini_prot_from_bb --na protein --from_bb --n_epochs 50 --port 12356 --devices cuda:0 cuda:1
+cat lists/short_test_ppi.txt | awk '{print "https://files.rcsb.org/view/" $1 ".pdb"}' | parallel --gnu "wget {} -P datasets/raw "
+```
+
+Testing angle-aware functional
+```
+python3 train_inf.py train -e test_run --na protein --from_bb --angle_aware \
+--n_epochs 10 --training_list lists/short_test_ppi.txt --testing_list lists/short_test_ppi.txt --no_store
 ```

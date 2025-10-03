@@ -410,6 +410,9 @@ class BB2Martini: # to sample pseudoatoms using backbone and aminoacid type data
     
     @torch.no_grad()       
     def __call__(self, data):
+        return self.call(data)
+    
+    def call(self, data):
         
         for ch in self.chains: 
             sequence=data[f'sequence{ch}'][:,:,None,None]
@@ -452,34 +455,7 @@ class BB2MartiniModule(nn.Module, BB2Martini):
         self.map_radii=nn.Parameter(self.map_radii, requires_grad=False)
 
     def forward(self, data):
-
-        for ch in self.chains: 
-            sequence=data[f'sequence{ch}'][:,:,None,None]
-            bb=data[f'bb_xyz{ch}']
-            if not self.angle_aware:
-                # Standard mapping (fully differentiable wrt sequence and bb rigid transform)
-                xyz = (sequence*self.map_coords*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1)
-                types = (sequence*self.map_types*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1)
-                radii = (sequence*self.map_radii*self.map_weights).sum(1)/(sequence*self.map_weights).sum(1)
-                weights = (sequence*self.map_weights).sum(1)
-            else:
-                # Angle-aware: shared builder keeps forward differentiable
-                xyz, types, radii, weights = self._build_angle_aware_average(sequence, bb)
-        
-            Rs, Ts = rigid_from_3_points(bb[None,:,0,:],bb[None,:,1,:],bb[None,:,2,:]) # transforms
-            xyz = torch.einsum('lpij,lpj->lpi', Rs, xyz.transpose(0,1)) + Ts
-        
-            xyz=xyz.transpose(0,1).reshape((-1,3))
-            types=types.reshape((-1,self.num_types))
-            radii=radii.reshape(-1)
-            weights=weights.reshape(-1)
-
-            data[f'atom_xyz{ch}']=xyz
-            data[f'atom_types{ch}']=types
-            data[f'atom_rad{ch}']=radii
-            data[f'atom_weights{ch}']=weights
-
-        return data 
+        return self.call(data) 
 
 
 class ReshapeBB: # то сut backbone atoms from the protein

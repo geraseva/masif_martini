@@ -65,7 +65,7 @@ if __name__ == "__main__":
                              RemoveUnusedKeys(keys=['sequence', 'bb_xyz'])]
         if args['from_bb']:
             if args['na']=='protein':
-                pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
+                pre_transformations=[ReshapeBB(), BB2Martini(angle_aware=args['angle_aware'])]+pre_transformations
             elif args['na'] in ['DNA','RNA','NA']:
                 pre_transformations=[ReshapeBB(), 
                                      BB2Martini(chains=['_p1'], molecule='protein'),
@@ -81,15 +81,19 @@ if __name__ == "__main__":
             prefix+='from_bb_'
         if args['martini']:
             prefix+='martini_'
+        if args['angle_aware']:
+            prefix+='aa_'
 
         full_dataset = NpiDataset(args['data_dir'], args['training_list'],
                     transform=transformations, pre_transform=pre_transformations, 
                     encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter,
-                    martini=('12' if args['martini'] and not args['from_bb'] else ''))
+                    martini=('12' if args['martini'] and not args['from_bb'] else ''), 
+                    store=~args['no_store'])
         test_dataset = NpiDataset(args['data_dir'], args['testing_list'],
                     transform=transformations, pre_transform=pre_transformations,
                     encoders=args['encoders'], prefix=prefix, pre_filter=iface_valid_filter,
-                    martini=('12' if args['martini'] and not args['from_bb'] else ''))
+                    martini=('12' if args['martini'] and not args['from_bb'] else ''), 
+                    store=~args['no_store'])
 
     # Train/Validation split:
         train_nsamples = len(full_dataset)
@@ -114,7 +118,7 @@ if __name__ == "__main__":
                               starting_epoch, best_loss, args['port'], ddp=False)
         fulltime=time.time()-fulltime
         print(f'## Execution complete {fulltime} seconds')
-    else:
+    elif args['mode']=='inference':
 
         model_path = os.path.join(os.path.dirname(__file__),"models",args['experiment_name'])
         checkpoint=torch.load(model_path, map_location=args['device'])
@@ -143,7 +147,7 @@ if __name__ == "__main__":
                                      RemoveUnusedKeys(keys=['sequence', 'bb_xyz'])]
         if args['from_bb']:
             if args['na']=='protein':
-                pre_transformations=[ReshapeBB(), BB2Martini()]+pre_transformations
+                pre_transformations=[ReshapeBB(), BB2Martini(angle_aware=args['angle_aware'])]+pre_transformations
             elif args['na'] in ['DNA','RNA','NA']:
                 pre_transformations=[ReshapeBB(), 
                                      BB2Martini(chains=['_p1'], molecule='protein'),
